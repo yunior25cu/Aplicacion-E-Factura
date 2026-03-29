@@ -4,6 +4,7 @@ import com.authvex.balaxysefactura.core.network.*
 import com.authvex.balaxysefactura.core.repository.CfeRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Assert.*
@@ -20,6 +21,14 @@ class EmissionViewModelTest {
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
+        runBlocking {
+            whenever(repository.getIndicadoresFacturacion(any(), any(), anyOrNull(), any())).thenReturn(Result.success(emptyList()))
+            whenever(repository.getIndicadorSugerido(any(), any(), anyOrNull(), any(), anyOrNull(), any())).thenReturn(Result.success(CfeFiscalIndicadorSugeridoDto(null, null, false, "N/A")))
+            whenever(repository.caePrecheck(any(), any(), anyOrNull(), any())).thenReturn(Result.success(CaePrecheckResultDto(true)))
+            whenever(repository.validateCfe(any(), any(), any(), any())).thenReturn(Result.success(CfeValidateResponseDto(true)))
+            whenever(repository.emitCfe(any(), any())).thenReturn(Result.success(CfeEmitResponse(true)))
+            whenever(repository.getCfeStatus(any())).thenReturn(Result.success(CfeStatusResponse(123L, 1, "OK")))
+        }
     }
 
     @After
@@ -28,106 +37,128 @@ class EmissionViewModelTest {
     }
 
     @Test
-    fun `initial load fetches catalogs and sets FormReady state`() = runTest {
-        val clientes = listOf(ClienteDto(1, "Cliente 1"))
-        val productos = listOf(ProductoDto(1, "Producto 1", precio = 100.0))
-        val monedas = listOf(CatalogoItemDto(1, "Pesos", "UYU"))
-        val almacenes = listOf(CatalogoItemDto(1, "Central"))
-        val formasPago = listOf(CatalogoItemDto(1, "Contado"))
+    fun `initial load fetches points of sale`() = runTest {
+        val pvs = listOf(PuntoVentaDto(1, "Main", 1, true, true))
+        whenever(repository.getPuntosVenta()).thenReturn(Result.success(pvs))
 
-        whenever(repository.getClientes()).thenReturn(Result.success(clientes))
-        whenever(repository.getProductos()).thenReturn(Result.success(productos))
-        whenever(repository.getMonedas()).thenReturn(Result.success(monedas))
-        whenever(repository.getAlmacenes()).thenReturn(Result.success(almacenes))
-        whenever(repository.getFormasPago()).thenReturn(Result.success(formasPago))
-        whenever(repository.getVencimientos()).thenReturn(Result.success(emptyList()))
+        val viewModel = EmissionViewModel(repository)
+        advanceUntilIdle()
+        
+        assertTrue(viewModel.uiState is EmissionUiState.SelectPOS)
+        assertEquals(pvs, (viewModel.uiState as EmissionUiState.SelectPOS).puntosVenta)
+    }
+
+    @Test
+    fun `proceedToEmission creates factura with correct payload and rule of 0 on base currency`() = runTest {
+        val pv = PuntoVentaDto(1, "Main", 1, true, true)
+        val item = CfeFiscalDocumentAvailabilityItemDto(111, "e-Factura", true, null, 1, "A")
+        val client = ClienteDto(932, "Test Client")
+        val moneda = CatalogoItemDto(1, "UYU", "UYU")
+        val almacen = CatalogoItemDto(10, "Deposito")
+        val formapago = CatalogoItemDto(1, "Contado")
+        val sugerencia = CfeFiscalIndicadorSugeridoDto(persistedValue = 16, suggestedValue = 16, isAutomatic = true, label = "IVA Minimo")
+        
+        whenever(repository.getPuntosVenta()).thenReturn(Result.success(listOf(pv)))
+        whenever(repository.getDocumentosHabilitados(any())).thenReturn(Result.success(listOf(CfeFiscalDocumentAvailabilityGroupDto(1, listOf(item)))))
+        whenever(repository.getMonedas()).thenReturn(Result.success(listOf(moneda)))
+        whenever(repository.getAlmacenes()).thenReturn(Result.success(listOf(almacen)))
+        whenever(repository.getFormasPago()).thenReturn(Result.success(listOf(formapago)))
         whenever(repository.getListasPrecio()).thenReturn(Result.success(emptyList()))
+        whenever(repository.getVencimientos()).thenReturn(Result.success(emptyList()))
+        whenever(repository.getIndicadoresFacturacion(any(), any(), anyOrNull(), any())).thenReturn(Result.success(emptyList()))
+        whenever(repository.getIndicadorSugerido(any(), any(), anyOrNull(), any(), anyOrNull(), any())).thenReturn(Result.success(sugerencia))
 
         val viewModel = EmissionViewModel(repository)
         advanceUntilIdle()
         
-        assertTrue("State should be FormReady but was ${viewModel.uiState}", viewModel.uiState is EmissionUiState.FormReady)
-        val state = viewModel.uiState as EmissionUiState.FormReady
-        assertEquals(clientes, state.clientes)
-        assertEquals("UYU", viewModel.selectedMoneda?.codigo)
+        viewModel.selectPOS(pv)
+        advanceUntilIdle()
+        
+        viewModel.selectFiscalType(item)
+        advanceUntilIdle()
+        
+        viewModel.selectedCliente = client
+        viewModel.selectedMoneda = moneda
+        viewModel.selectedAlmacen = almacen
+        viewModel.selectedFormaPago = formapago
+        
+        val product = ProductoDto(1001, "Product", "P001", 100.0, 0.22)
+        viewModel.startLineConfiguration(product)
+        advanceUntilIdle()
+        
+        // Ensure persistedValue from suggestion is used
+        viewModel.confirmLineConfiguration(1.0, 100.0, viewModel.lineConfigurationSugerido?.persistedValue, viewModel.lineConfigurationSugerido?.suggestedValue, viewModel.lineConfigurationSugerido?.label)
+        advanceUntilIdle()
+        
+        whenever(repository.createFactura(any())).thenReturn(Result.success(123L))
+
+        viewModel.proceedToEmission()
+        advanceUntilIdle()
+
+        val captor = argumentCaptor<FacturaCreateDto>()
+        verify(repository).createFactura(captor.capture())
+        
+        val payload = captor.firstValue
+        
+        // Header assertions
+        assertEquals(122.0, payload.importeTotalBase, 0.0)
+        
+        // Lines assertions
+        assertEquals(1, payload.documentoProductos.size)
+        val line = payload.documentoProductos[0]
+        assertEquals(16, line.indicadorFacturacionC4)
     }
 
     @Test
-    fun `emission flow resolves fiscal intent correctly`() = runTest {
-        setupCatalogs()
-        val viewModel = EmissionViewModel(repository)
-        advanceUntilIdle()
-        fillBasicForm(viewModel)
-        viewModel.selectedFiscalIntent = FiscalIntent.E_FACTURA
-
-        val docId = 123L
-        val fiscalOption = CfeTipoPermitidoDto(
-            code = 111,
-            name = "e-Factura",
-            suggested = true,
-            implementedInUi = true,
-            puntoVentaId = 3,
-            serie = "A",
-            proximoNumero = 100
-        )
+    fun `normalization rule - null 1 2 3 4 become null`() = runTest {
+        val viewModel = setupViewModelForPayload()
+        val product = ProductoDto(1001, "Product", "P001", 100.0, 0.22)
         
-        whenever(repository.createFactura(any())).thenReturn(Result.success(docId))
-        whenever(repository.getFactura(docId)).thenReturn(Result.success(FacturaResponse(docId)))
-        whenever(repository.getTiposPermitidos()).thenReturn(Result.success(listOf(fiscalOption)))
-        whenever(repository.emitCfe(eq(docId), any())).thenReturn(Result.success(CfeEmitResponse(true)))
-        whenever(repository.getCfeStatus(docId)).thenReturn(Result.success(CfeStatusResponse(docId, 1)))
+        // Add lines with different C4
+        viewModel.startLineConfiguration(product)
+        advanceUntilIdle()
+        viewModel.confirmLineConfiguration(1.0, 100.0, null)
 
-        viewModel.startEmissionFlow()
+        viewModel.startLineConfiguration(product)
+        advanceUntilIdle()
+        viewModel.confirmLineConfiguration(1.0, 100.0, 1)
+
+        viewModel.startLineConfiguration(product)
+        advanceUntilIdle()
+        viewModel.confirmLineConfiguration(1.0, 100.0, 16)
+        
+        whenever(repository.createFactura(any())).thenReturn(Result.success(123L))
+        viewModel.proceedToEmission()
         advanceUntilIdle()
         
-        // Al ser opción única sugerida y validada, salta directo a Emit
-        assertTrue("State should be Success but was ${viewModel.uiState}", viewModel.uiState is EmissionUiState.Success)
+        val captor = argumentCaptor<FacturaCreateDto>()
+        verify(repository).createFactura(captor.capture())
+        val payload = captor.firstValue
+        
+        assertNull(payload.documentoProductos[0].indicadorFacturacionC4)
+        assertNull(payload.documentoProductos[1].indicadorFacturacionC4)
+        assertEquals(16, payload.documentoProductos[2].indicadorFacturacionC4)
     }
 
-    @Test
-    fun `emission flow handles create failure`() = runTest {
-        val cliente = ClienteDto(1, "Cliente 1")
-        val product = ProductoDto(1, "P", precio = 10.0)
-        
-        whenever(repository.getClientes()).thenReturn(Result.success(listOf(cliente)))
-        whenever(repository.getProductos()).thenReturn(Result.success(listOf(product)))
-        whenever(repository.getMonedas()).thenReturn(Result.success(listOf(CatalogoItemDto(1, "Pesos", "UYU"))))
+    private suspend fun TestScope.setupViewModelForPayload(): EmissionViewModel {
+        val pv = PuntoVentaDto(1, "Main", 1, true, true)
+        val item = CfeFiscalDocumentAvailabilityItemDto(111, "e-Factura", true, null, 1, "A")
+        whenever(repository.getPuntosVenta()).thenReturn(Result.success(listOf(pv)))
+        whenever(repository.getDocumentosHabilitados(any())).thenReturn(Result.success(listOf(CfeFiscalDocumentAvailabilityGroupDto(1, listOf(item)))))
+        whenever(repository.getMonedas()).thenReturn(Result.success(listOf(CatalogoItemDto(1, "UYU"))))
         whenever(repository.getAlmacenes()).thenReturn(Result.success(listOf(CatalogoItemDto(1, "A"))))
         whenever(repository.getFormasPago()).thenReturn(Result.success(listOf(CatalogoItemDto(1, "F"))))
-        whenever(repository.getVencimientos()).thenReturn(Result.success(emptyList()))
         whenever(repository.getListasPrecio()).thenReturn(Result.success(emptyList()))
-
+        whenever(repository.getVencimientos()).thenReturn(Result.success(emptyList()))
+        
         val viewModel = EmissionViewModel(repository)
         advanceUntilIdle()
-        
-        viewModel.selectedCliente = cliente
-        viewModel.addLinea(product, 1.0)
-
-        val error = AppError.ServerError(500)
-        whenever(repository.createFactura(any())).thenReturn(Result.failure(error))
-
-        viewModel.startEmissionFlow()
+        viewModel.selectPOS(pv)
         advanceUntilIdle()
-
-        assertTrue(viewModel.uiState is EmissionUiState.Error)
-        assertEquals(error, (viewModel.uiState as EmissionUiState.Error).error)
-    }
-
-    private suspend fun setupCatalogs() {
-        whenever(repository.getClientes()).thenReturn(Result.success(emptyList()))
-        whenever(repository.getProductos()).thenReturn(Result.success(emptyList()))
-        whenever(repository.getMonedas()).thenReturn(Result.success(emptyList()))
-        whenever(repository.getAlmacenes()).thenReturn(Result.success(emptyList()))
-        whenever(repository.getFormasPago()).thenReturn(Result.success(emptyList()))
-        whenever(repository.getVencimientos()).thenReturn(Result.success(emptyList()))
-        whenever(repository.getListasPrecio()).thenReturn(Result.success(emptyList()))
-    }
-
-    private fun fillBasicForm(vm: EmissionViewModel) {
-        vm.selectedCliente = ClienteDto(1, "Test")
-        vm.selectedMoneda = CatalogoItemDto(1, "Pesos", "UYU")
-        vm.selectedAlmacen = CatalogoItemDto(1, "ALM")
-        vm.selectedFormaPago = CatalogoItemDto(1, "CONT")
-        vm.addLinea(ProductoDto(1, "Prod", precio = 10.0), 1.0)
+        viewModel.selectFiscalType(item)
+        advanceUntilIdle()
+        viewModel.selectedCliente = ClienteDto(1, "C")
+        
+        return viewModel
     }
 }

@@ -19,7 +19,16 @@ sealed class AppError : Exception() {
         is NotFound -> "El recurso solicitado no existe."
         is Conflict -> "Conflicto en la operación."
         is ServerError -> "Error en el servidor (Código $code)."
-        is Validation -> message
+        is Validation -> {
+            val errorDetails = errors?.entries?.joinToString("\n") { (key, value) -> 
+                "$key: ${value.joinToString(", ")}"
+            }
+            if (!errorDetails.isNullOrBlank()) {
+                "$message\n$errorDetails"
+            } else {
+                message
+            }
+        }
         is Unexpected -> message
     }
 }

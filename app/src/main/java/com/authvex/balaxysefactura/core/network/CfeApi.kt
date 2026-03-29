@@ -11,19 +11,25 @@ interface CfeApi {
 
     // --- Emisión ERP ---
     @POST("Factura")
-    suspend fun createFactura(@Body request: FacturaRequest): Long
+    suspend fun createFactura(@Body request: FacturaCreateDto): Long
+
+    @POST("Devolucion")
+    suspend fun createDevolucion(@Body request: DevolucionCreateDto): Long
 
     @GET("Factura/{documentoId}")
     suspend fun getFactura(@Path("documentoId") documentoId: Long): FacturaResponse
 
-    // --- Catálogos Paginados (Response: { totalRecords, items: [...] }) ---
+    @GET("Devolucion/{documentoId}")
+    suspend fun getDevolucion(@Path("documentoId") documentoId: Long): FacturaResponse
+
+    // --- Catálogos Paginados ---
     @GET("Cliente")
-    suspend fun getClientes(@Query("filtro") filtro: String? = null): PagedResponse<ClienteDto>
+    suspend fun getClientes(@Query("query") query: String? = null, @Query("limit") limit: Int = 20): PagedResponse<ClienteDto>
 
     @GET("Producto")
-    suspend fun getProductos(@Query("filtro") filtro: String? = null): PagedResponse<ProductoDto>
+    suspend fun getProductos(@Query("query") query: String? = null, @Query("limit") limit: Int = 20): PagedResponse<ProductoDto>
 
-    // --- Catálogos de Lista Simple (Response: [...]) ---
+    // --- Catálogos de Lista Simple ---
     @GET("Catalogo/Monedas")
     suspend fun getMonedas(): List<CatalogoItemDto>
 
@@ -48,13 +54,57 @@ interface CfeApi {
     @GET("Catalogo/CentroCostos")
     suspend fun getCentroCostos(): List<CatalogoItemDto>
 
-    // --- Flujo Fiscal ---
-    @GET("Cfe/fiscal/tipos-permitidos")
-    suspend fun getTiposPermitidos(@Query("onlyImplemented") onlyImplemented: Boolean = true): List<CfeTipoPermitidoDto>
+    // --- Flujo Fiscal Actualizado ---
+    @GET("Cfe/puntos-venta")
+    suspend fun getPuntosVenta(): List<PuntoVentaDto>
+
+    @GET("Cfe/fiscal/documentos-habilitados")
+    suspend fun getDocumentosHabilitados(@Query("punto_venta") puntoVentaId: Int): List<CfeFiscalDocumentAvailabilityGroupDto>
+
+    @POST("Cfe/validate")
+    suspend fun validateCfe(
+        @Query("idDocumento") idDocumento: Long,
+        @Query("cfeCode") cfeCode: Int,
+        @Query("puntoVentaId") puntoVentaId: Int,
+        @Query("seriePreferida") seriePreferida: String?
+    ): CfeValidateResponseDto
 
     @POST("Cfe/documento/{documentoId}/emit")
     suspend fun emitCfe(@Path("documentoId") documentoId: Long, @Body request: CfeEmitRequest): CfeEmitResponse
 
     @GET("Cfe/documento/{documentoId}/status")
     suspend fun getCfeStatus(@Path("documentoId") documentoId: Long): CfeStatusResponse
+
+    @GET("Cfe/documento/{documentoId}/status/sync")
+    suspend fun getCfeStatusSync(@Path("documentoId") documentoId: Long): CfeStatusResponse
+
+    @GET("Cfe/fiscal/tipos-permitidos")
+    suspend fun getTiposPermitidos(@Query("onlyImplemented") onlyImplemented: Boolean = true): List<CfeTipoPermitidoDto>
+
+    // --- Nuevos endpoints fiscales ---
+    @GET("Cae/health/precheck")
+    suspend fun caePrecheck(
+        @Query("puntoVentaId") puntoVentaId: Int,
+        @Query("tipoCfe") tipoCfe: Int,
+        @Query("serie") serie: String?,
+        @Query("fechaEmision") fechaEmision: String
+    ): CaePrecheckResultDto
+
+    @GET("Cfe/fiscal/indicadores-facturacion")
+    suspend fun getIndicadoresFacturacion(
+        @Query("cfeCode") cfeCode: Int,
+        @Query("puntoVentaId") puntoVentaId: Int,
+        @Query("seriePreferida") seriePreferida: String?,
+        @Query("fechaEmision") fechaEmision: String
+    ): List<CfeFiscalIndicadorFacturacionDto>
+
+    @GET("Cfe/fiscal/indicadores-facturacion/sugerido")
+    suspend fun getIndicadorSugerido(
+        @Query("cfeCode") cfeCode: Int,
+        @Query("tasaIva") tasaIva: Double,
+        @Query("currentValue") currentValue: Int?,
+        @Query("puntoVentaId") puntoVentaId: Int,
+        @Query("seriePreferida") seriePreferida: String?,
+        @Query("fechaEmision") fechaEmision: String
+    ): CfeFiscalIndicadorSugeridoDto
 }

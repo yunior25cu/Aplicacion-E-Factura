@@ -27,13 +27,15 @@ class CfeRepositoryTest {
 
         private fun <T> paged(items: List<T>) = PagedResponse(items.size, 0, 999, items)
 
-        override suspend fun createFactura(request: FacturaRequest): Long = shouldThrow?.let { throw it } ?: 1L
+        override suspend fun createFactura(request: FacturaCreateDto): Long = shouldThrow?.let { throw it } ?: 1L
+        override suspend fun createDevolucion(request: DevolucionCreateDto): Long = shouldThrow?.let { throw it } ?: 2L
         override suspend fun getFactura(documentoId: Long): FacturaResponse = shouldThrow?.let { throw it } ?: FacturaResponse(documentoId)
+        override suspend fun getDevolucion(documentoId: Long): FacturaResponse = shouldThrow?.let { throw it } ?: FacturaResponse(documentoId)
         
-        override suspend fun getClientes(filtro: String?): PagedResponse<ClienteDto> = 
+        override suspend fun getClientes(query: String?, limit: Int): PagedResponse<ClienteDto> = 
             shouldThrow?.let { throw it } ?: paged(emptyList())
             
-        override suspend fun getProductos(filtro: String?): PagedResponse<ProductoDto> = 
+        override suspend fun getProductos(query: String?, limit: Int): PagedResponse<ProductoDto> =
             shouldThrow?.let { throw it } ?: paged(emptyList())
             
         override suspend fun getMonedas(): List<CatalogoItemDto> = 
@@ -59,9 +61,22 @@ class CfeRepositoryTest {
         override suspend fun getCentroCostos(): List<CatalogoItemDto> = 
             shouldThrow?.let { throw it } ?: emptyList()
 
-        override suspend fun getTiposPermitidos(onlyImplemented: Boolean): List<CfeTipoPermitidoDto> = shouldThrow?.let { throw it } ?: emptyList()
+        override suspend fun getPuntosVenta(): List<PuntoVentaDto> = shouldThrow?.let { throw it } ?: emptyList()
+        override suspend fun getDocumentosHabilitados(puntoVentaId: Int): List<CfeFiscalDocumentAvailabilityGroupDto> = shouldThrow?.let { throw it } ?: emptyList()
+        override suspend fun validateCfe(idDocumento: Long, cfeCode: Int, puntoVentaId: Int, seriePreferida: String?): CfeValidateResponseDto = shouldThrow?.let { throw it } ?: CfeValidateResponseDto(true)
         override suspend fun emitCfe(documentoId: Long, request: CfeEmitRequest): CfeEmitResponse = shouldThrow?.let { throw it } ?: CfeEmitResponse(true)
         override suspend fun getCfeStatus(documentoId: Long): CfeStatusResponse = shouldThrow?.let { throw it } ?: CfeStatusResponse(documentoId, 1)
+        override suspend fun getCfeStatusSync(documentoId: Long): CfeStatusResponse = shouldThrow?.let { throw it } ?: CfeStatusResponse(documentoId, 1)
+        override suspend fun getTiposPermitidos(onlyImplemented: Boolean): List<CfeTipoPermitidoDto> = shouldThrow?.let { throw it } ?: emptyList()
+        
+        override suspend fun caePrecheck(puntoVentaId: Int, tipoCfe: Int, serie: String?, fechaEmision: String): CaePrecheckResultDto = 
+            shouldThrow?.let { throw it } ?: CaePrecheckResultDto(true)
+            
+        override suspend fun getIndicadoresFacturacion(cfeCode: Int, puntoVentaId: Int, seriePreferida: String?, fechaEmision: String): List<CfeFiscalIndicadorFacturacionDto> = 
+            shouldThrow?.let { throw it } ?: emptyList()
+            
+        override suspend fun getIndicadorSugerido(cfeCode: Int, tasaIva: Double, currentValue: Int?, puntoVentaId: Int, seriePreferida: String?, fechaEmision: String): CfeFiscalIndicadorSugeridoDto = 
+            shouldThrow?.let { throw it } ?: CfeFiscalIndicadorSugeridoDto(null, null, false, "N/A")
     }
 
     @Test
