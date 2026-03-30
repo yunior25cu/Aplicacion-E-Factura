@@ -96,6 +96,7 @@ private fun mockApi(): CfeApi = object : CfeApi {
     override suspend fun validateCfe(idDocumento: Long, cfeCode: Int, puntoVentaId: Int, seriePreferida: String?): CfeValidateResponseDto = throw Exception()
     override suspend fun emitCfe(documentoId: Long, request: CfeEmitRequest): CfeEmitResponse = throw Exception()
     override suspend fun getCfeStatus(documentoId: Long): CfeStatusResponse = throw Exception()
+    override suspend fun getCfeStatusByUrl(statusUrl: String): CfeStatusResponse = throw Exception()
     override suspend fun getCfeStatusSync(documentoId: Long): CfeStatusResponse = throw Exception()
     override suspend fun getTiposPermitidos(onlyImplemented: Boolean): List<CfeTipoPermitidoDto> = throw Exception()
     override suspend fun caePrecheck(puntoVentaId: Int, tipoCfe: Int, serie: String?, fechaEmision: String): CaePrecheckResultDto = throw Exception()

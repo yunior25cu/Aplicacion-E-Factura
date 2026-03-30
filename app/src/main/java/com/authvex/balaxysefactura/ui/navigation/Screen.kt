@@ -9,4 +9,5 @@ sealed class Screen(val route: String) {
         fun createRoute(documentoId: Int) = "cfe_detail/$documentoId"
     }
     object Emission : Screen("emission")
+    object Reports : Screen("reports")
 }

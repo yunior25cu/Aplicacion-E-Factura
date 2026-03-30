@@ -26,8 +26,8 @@ class EmissionViewModelTest {
             whenever(repository.getIndicadorSugerido(any(), any(), anyOrNull(), any(), anyOrNull(), any())).thenReturn(Result.success(CfeFiscalIndicadorSugeridoDto(null, null, false, "N/A")))
             whenever(repository.caePrecheck(any(), any(), anyOrNull(), any())).thenReturn(Result.success(CaePrecheckResultDto(true)))
             whenever(repository.validateCfe(any(), any(), any(), any())).thenReturn(Result.success(CfeValidateResponseDto(true)))
-            whenever(repository.emitCfe(any(), any())).thenReturn(Result.success(CfeEmitResponse(true)))
-            whenever(repository.getCfeStatus(any())).thenReturn(Result.success(CfeStatusResponse(123L, 1, "OK")))
+            whenever(repository.emitCfe(any(), any())).thenReturn(Result.success(CfeEmitResponse("req-123", "url")))
+            whenever(repository.getCfeStatus(any(), anyOrNull())).thenReturn(Result.success(CfeStatusResponse(123L, 1, "OK")))
         }
     }
 
@@ -110,7 +110,7 @@ class EmissionViewModelTest {
     }
 
     @Test
-    fun `normalization rule - null 1 2 3 4 become null`() = runTest {
+    fun `no normalization rule - all values should persist`() = runTest {
         val viewModel = setupViewModelForPayload()
         val product = ProductoDto(1001, "Product", "P001", 100.0, 0.22)
         
@@ -136,7 +136,7 @@ class EmissionViewModelTest {
         val payload = captor.firstValue
         
         assertNull(payload.documentoProductos[0].indicadorFacturacionC4)
-        assertNull(payload.documentoProductos[1].indicadorFacturacionC4)
+        assertEquals(1, payload.documentoProductos[1].indicadorFacturacionC4)
         assertEquals(16, payload.documentoProductos[2].indicadorFacturacionC4)
     }
 

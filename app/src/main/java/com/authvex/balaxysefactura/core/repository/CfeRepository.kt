@@ -59,24 +59,25 @@ open class CfeRepository(private val api: CfeApi) {
         }
     }
 
-    // --- Catálogos Paginados ---
-    open suspend fun getClientes(query: String? = null, limit: Int = 20): Result<List<ClienteDto>> {
+    // --- Catálogos ---
+    open suspend fun getClientes(query: String? = null): Result<List<ClienteDto>> {
         return try {
-            Result.success(api.getClientes(query, limit).items)
+            val response = api.getClientes(query = query, limit = 20)
+            Result.success(response.items)
         } catch (e: Exception) {
             Result.failure(ErrorMapper.fromThrowable(e))
         }
     }
 
-    open suspend fun getProductos(query: String? = null, limit: Int = 20): Result<List<ProductoDto>> {
+    open suspend fun getProductos(query: String? = null): Result<List<ProductoDto>> {
         return try {
-            Result.success(api.getProductos(query, limit).items)
+            val response = api.getProductos(query = query, limit = 20)
+            Result.success(response.items)
         } catch (e: Exception) {
             Result.failure(ErrorMapper.fromThrowable(e))
         }
     }
 
-    // --- Catálogos de Lista Simple ---
     open suspend fun getMonedas(): Result<List<CatalogoItemDto>> {
         return try {
             Result.success(api.getMonedas())
@@ -134,9 +135,10 @@ open class CfeRepository(private val api: CfeApi) {
         }
     }
 
-    open suspend fun validateCfe(idDocumento: Long, cfeCode: Int, puntoVentaId: Int, serie: String?): Result<CfeValidateResponseDto> {
+    open suspend fun validateCfe(idDocumento: Long, cfeCode: Int, puntoVentaId: Int, seriePreferida: String?): Result<CfeValidateResponseDto> {
         return try {
-            Result.success(api.validateCfe(idDocumento, cfeCode, puntoVentaId, serie))
+            val response = api.validateCfe(idDocumento, cfeCode, puntoVentaId, seriePreferida)
+            Result.success(response)
         } catch (e: Exception) {
             Result.failure(ErrorMapper.fromThrowable(e))
         }
@@ -151,9 +153,13 @@ open class CfeRepository(private val api: CfeApi) {
         }
     }
 
-    open suspend fun getCfeStatus(documentoId: Long): Result<CfeStatusResponse> {
+    open suspend fun getCfeStatus(documentoId: Long, statusUrl: String? = null): Result<CfeStatusResponse> {
         return try {
-            val response = api.getCfeStatus(documentoId)
+            val response = if (statusUrl != null) {
+                api.getCfeStatusByUrl(statusUrl)
+            } else {
+                api.getCfeStatus(documentoId)
+            }
             Result.success(response)
         } catch (e: Exception) {
             Result.failure(ErrorMapper.fromThrowable(e))

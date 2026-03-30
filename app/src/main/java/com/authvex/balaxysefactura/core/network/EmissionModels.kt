@@ -184,9 +184,7 @@ data class CfeEmitRequest(
 
 @Serializable
 data class CfeEmitResponse(
-    val success: Boolean,
-    val message: String? = null,
-    val documentoId: Long? = null,
+    val requestId: String,
     val statusUrl: String? = null
 )
 

@@ -13,10 +13,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.authvex.balaxysefactura.core.auth.AuthPreferences
 import com.authvex.balaxysefactura.core.auth.SessionManager
-import com.authvex.balaxysefactura.core.network.AuthApi
-import com.authvex.balaxysefactura.core.network.CfeApi
-import com.authvex.balaxysefactura.core.network.RetrofitClient
+import com.authvex.balaxysefactura.core.network.*
 import com.authvex.balaxysefactura.core.repository.CfeRepository
+import com.authvex.balaxysefactura.core.repository.ReportsRepository
 import com.authvex.balaxysefactura.ui.navigation.Screen
 import com.authvex.balaxysefactura.ui.screens.cfe.detail.CfeDetailScreen
 import com.authvex.balaxysefactura.ui.screens.cfe.detail.CfeDetailViewModel
@@ -29,6 +28,8 @@ import com.authvex.balaxysefactura.ui.screens.login.LoginScreen
 import com.authvex.balaxysefactura.ui.screens.login.LoginViewModel
 import com.authvex.balaxysefactura.ui.screens.emission.EmissionScreen
 import com.authvex.balaxysefactura.ui.screens.emission.EmissionViewModel
+import com.authvex.balaxysefactura.ui.screens.reports.ReportsScreen
+import com.authvex.balaxysefactura.ui.screens.reports.ReportsViewModel
 import com.authvex.balaxysefactura.ui.theme.BalaxysEfacturaTheme
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -43,7 +44,10 @@ class MainActivity : ComponentActivity() {
         val retrofitClient = RetrofitClient(authPreferences)
         val authApi = retrofitClient.create(AuthApi::class.java)
         val cfeApi = retrofitClient.create(CfeApi::class.java)
+        val reportsApi = retrofitClient.create(ReportsApi::class.java)
+        
         val cfeRepository = CfeRepository(cfeApi)
+        val reportsRepository = ReportsRepository(reportsApi)
 
         val startDestination = runBlocking {
             if (authPreferences.getAuthTokenSync() != null) Screen.Home.route else Screen.Login.route
@@ -99,6 +103,9 @@ class MainActivity : ComponentActivity() {
                             },
                             onEmitDocument = {
                                 navController.navigate(Screen.Emission.route)
+                            },
+                            onViewReports = {
+                                navController.navigate(Screen.Reports.route)
                             }
                         )
                     }
@@ -151,6 +158,19 @@ class MainActivity : ComponentActivity() {
                                     popUpTo(Screen.Home.route)
                                 }
                             }
+                        )
+                    }
+                    composable(Screen.Reports.route) {
+                        val factory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return ReportsViewModel(reportsRepository) as T
+                            }
+                        }
+                        val reportsViewModel: ReportsViewModel = viewModel(factory = factory)
+                        ReportsScreen(
+                            viewModel = reportsViewModel,
+                            onBack = { navController.popBackStack() }
                         )
                     }
                     if (BuildConfig.DEBUG) {

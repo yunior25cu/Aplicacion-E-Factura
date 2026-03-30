@@ -75,6 +75,9 @@ interface CfeApi {
     @GET("Cfe/documento/{documentoId}/status")
     suspend fun getCfeStatus(@Path("documentoId") documentoId: Long): CfeStatusResponse
 
+    @GET
+    suspend fun getCfeStatusByUrl(@Url statusUrl: String): CfeStatusResponse
+
     @GET("Cfe/documento/{documentoId}/status/sync")
     suspend fun getCfeStatusSync(@Path("documentoId") documentoId: Long): CfeStatusResponse
 

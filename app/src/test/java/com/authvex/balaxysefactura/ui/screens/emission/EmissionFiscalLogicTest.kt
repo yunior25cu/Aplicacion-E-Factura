@@ -28,8 +28,8 @@ class EmissionFiscalLogicTest {
             whenever(repository.getIndicadorSugerido(any(), any(), anyOrNull(), any(), anyOrNull(), any())).thenReturn(Result.success(CfeFiscalIndicadorSugeridoDto(null, null, false, "N/A")))
             whenever(repository.caePrecheck(any(), any(), anyOrNull(), any())).thenReturn(Result.success(CaePrecheckResultDto(true)))
             whenever(repository.validateCfe(any(), any(), any(), any())).thenReturn(Result.success(CfeValidateResponseDto(true)))
-            whenever(repository.emitCfe(any(), any())).thenReturn(Result.success(CfeEmitResponse(true)))
-            whenever(repository.getCfeStatus(any())).thenReturn(Result.success(CfeStatusResponse(123L, 1, "OK")))
+            whenever(repository.emitCfe(any(), any())).thenReturn(Result.success(CfeEmitResponse("req-123", "url")))
+            whenever(repository.getCfeStatus(any(), anyOrNull())).thenReturn(Result.success(CfeStatusResponse(123L, 1, "OK")))
         }
     }
 
@@ -113,5 +113,23 @@ class EmissionFiscalLogicTest {
         val error = (viewModel.uiState as EmissionUiState.Error).error
         assertTrue(error is AppError.Validation)
         assertTrue(error.message?.contains("Error 1") == true)
+    }
+
+    @Test
+    fun `proceedToEmission polls with statusUrl`() = runTest {
+        val viewModel = setupViewModel()
+        
+        whenever(repository.createFactura(any())).thenReturn(Result.success(123L))
+        
+        val product = ProductoDto(1001, "Product", "P001", 100.0, 0.22)
+        viewModel.startLineConfiguration(product)
+        advanceUntilIdle()
+        viewModel.confirmLineConfiguration(1.0, 100.0, null, null, null)
+        
+        viewModel.proceedToEmission()
+        advanceUntilIdle()
+        
+        verify(repository).emitCfe(eq(123L), any())
+        verify(repository).getCfeStatus(eq(123L), eq("url"))
     }
 }

@@ -328,11 +328,6 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             val iva = importeBase * taxRate
             val totalConIva = importeBase + iva
             
-            val normalizedC4 = when (it.indicadorFacturacionC4) {
-                null, 1, 2, 3, 4 -> null
-                else -> it.indicadorFacturacionC4
-            }
-            
             FacturaLineaRequest(
                 idProducto = it.producto.id,
                 cantidad = qty,
@@ -348,7 +343,7 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
                 importeOriginal = if (isBaseCurrency) 0.0 else importeBase,
                 precioOriginalConIva = if (isBaseCurrency) 0.0 else (price * (1 + taxRate)),
                 importeOriginalConIva = if (isBaseCurrency) 0.0 else totalConIva,
-                indicadorFacturacionC4 = normalizedC4
+                indicadorFacturacionC4 = it.indicadorFacturacionC4
             )
         }
     }
@@ -362,7 +357,7 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
                 return
             }
 
-            uiState = EmissionUiState.Processing("Emitiendo fiscalmente...")
+            uiState = EmissionUiState.Processing("Encolando emisión fiscal...")
             val emitReq = CfeEmitRequest(
                 puntoVentaId = pos.id,
                 seriePreferida = item.serie,
@@ -370,19 +365,19 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
                 ncAdjustmentMode = null
             )
             
-            repository.emitCfe(documentoId, emitReq).onSuccess {
-                startPolling(documentoId)
+            repository.emitCfe(documentoId, emitReq).onSuccess { response ->
+                startPolling(documentoId, response.statusUrl)
             }.onFailure { handleFailure(it) }
         }.onFailure { handleFailure(it) }
     }
 
-    private fun startPolling(documentoId: Long) {
+    private fun startPolling(documentoId: Long, statusUrl: String?) {
         viewModelScope.launch {
             uiState = EmissionUiState.Processing("Consultando estado final...")
-            repository.getCfeStatus(documentoId).onSuccess { status ->
+            repository.getCfeStatus(documentoId, statusUrl).onSuccess { status ->
                 uiState = EmissionUiState.Success(
                     documentoId = documentoId,
-                    message = status.mensaje ?: "Emisión completada."
+                    message = status.mensaje ?: "Emisión encolada/completada."
                 )
             }.onFailure { handleFailure(it) }
         }

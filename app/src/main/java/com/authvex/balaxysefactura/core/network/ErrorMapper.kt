@@ -43,6 +43,7 @@ object ErrorMapper {
             val jsonElement = json.parseToJsonElement(errorBody).jsonObject
             jsonElement["detail"]?.jsonPrimitive?.content
                 ?: jsonElement["message"]?.jsonPrimitive?.content
+                ?: jsonElement["title"]?.jsonPrimitive?.content
         } catch (ex: Exception) {
             null
         }
@@ -54,9 +55,10 @@ object ErrorMapper {
         return try {
             val jsonElement = json.parseToJsonElement(errorBody).jsonObject
             
-            // 1. Intentar buscar "detail" (ProblemDetails) o "message"
+            // 1. Intentar buscar "detail", "message" o "title"
             val message = jsonElement["detail"]?.jsonPrimitive?.content
                 ?: jsonElement["message"]?.jsonPrimitive?.content
+                ?: jsonElement["title"]?.jsonPrimitive?.content
             
             // 2. Intentar buscar "errors" (ModelState)
             val errorsMap = jsonElement["errors"]?.jsonObject?.mapValues { entry ->
@@ -66,11 +68,9 @@ object ErrorMapper {
             if (message != null || errorsMap != null) {
                 AppError.Validation(message ?: "Error de validación", errorsMap)
             } else {
-                // Si es un JSON pero no tiene los campos esperados, devolver el texto crudo
                 AppError.Validation(errorBody)
             }
         } catch (ex: Exception) {
-            // Si no es JSON, es un string plano
             AppError.Validation(errorBody)
         }
     }
