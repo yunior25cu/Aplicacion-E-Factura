@@ -127,9 +127,9 @@ class MainActivity : ComponentActivity() {
                     }
                     composable(
                         route = Screen.CfeDetail.route,
-                        arguments = listOf(navArgument("documentoId") { type = NavType.IntType })
+                        arguments = listOf(navArgument("documentoId") { type = NavType.LongType })
                     ) { backStackEntry ->
-                        val documentoId = backStackEntry.arguments?.getInt("documentoId") ?: 0
+                        val documentoId = backStackEntry.arguments?.getLong("documentoId") ?: 0L
                         val factory = object : ViewModelProvider.Factory {
                             @Suppress("UNCHECKED_CAST")
                             override fun <T : ViewModel> create(modelClass: Class<T>): T {

@@ -1,6 +1,5 @@
 package com.authvex.balaxysefactura.ui.screens.emission
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -8,77 +7,85 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.authvex.balaxysefactura.core.network.*
-import java.util.Locale
+import java.text.NumberFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EmissionScreen(
-    viewModel: EmissionViewModel,
+    viewModel: EmissionViewModel, 
     onBack: () -> Unit,
-    onNavigateToDetail: (Int) -> Unit
+    onNavigateToDetail: (Long) -> Unit
 ) {
-    val uiState = viewModel.uiState
+    val state = viewModel.uiState
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Nueva Emisión", style = MaterialTheme.typography.titleLarge) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                title = { Text("Emitir Comprobante") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    IconButton(onClick = { 
+                        if (state is EmissionUiState.SelectPOS) onBack() else viewModel.resetToStart() 
+                    }) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            when (uiState) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            when (state) {
                 is EmissionUiState.LoadingInitial -> {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
                 is EmissionUiState.SelectPOS -> {
-                    SelectPOSView(uiState.puntosVenta) { viewModel.selectPOS(it) }
+                    POSSelectionView(state.puntosVenta, onSelect = { viewModel.selectPOS(it) })
                 }
                 is EmissionUiState.SelectType -> {
-                    SelectTypeView(uiState.types) { viewModel.selectFiscalType(it) }
+                    TypeSelectionView(state.types, onSelect = { viewModel.selectFiscalType(it) })
                 }
                 is EmissionUiState.FillForm -> {
-                    FillFormView(viewModel, uiState.type, uiState.catalogs)
+                    EmissionFormView(viewModel, state.type, state.catalogs)
                 }
                 is EmissionUiState.Processing -> {
-                    ProcessingState(uiState.message, Modifier.align(Alignment.Center))
+                    ProcessingState(state.message, modifier = Modifier.align(Alignment.Center))
                 }
                 is EmissionUiState.Success -> {
-                    SuccessView(
-                        message = uiState.message,
-                        onViewDetail = { onNavigateToDetail(uiState.documentoId.toInt()) },
-                        onNew = { viewModel.resetToStart() },
-                        modifier = Modifier.align(Alignment.Center)
-                    )
+                    SuccessView(state.documentoId, state.message, onFinish = { onNavigateToDetail(state.documentoId) })
                 }
                 is EmissionUiState.Error -> {
-                    ErrorView(
-                        error = uiState.error,
-                        onReset = { viewModel.resetToStart() },
-                        modifier = Modifier.align(Alignment.Center)
+                    ErrorView(state.error, onReset = { viewModel.resetToStart() }, modifier = Modifier.fillMaxSize())
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun POSSelectionView(pvs: List<PuntoVentaDto>, onSelect: (PuntoVentaDto) -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Text("Seleccione Punto de Venta", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 16.dp))
+        LazyColumn {
+            itemsIndexed(pvs) { _, pv ->
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    onClick = { onSelect(pv) }
+                ) {
+                    ListItemContent(
+                        headline = pv.nombre,
+                        supporting = "Número: ${pv.numero}",
+                        trailing = { Icon(Icons.Default.ChevronRight, null) }
                     )
                 }
             }
@@ -87,27 +94,25 @@ fun EmissionScreen(
 }
 
 @Composable
-fun SelectPOSView(pvs: List<PuntoVentaDto>, onSelect: (PuntoVentaDto) -> Unit) {
-    LazyColumn(contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { 
-            Text("Punto de Venta", style = MaterialTheme.typography.headlineMedium)
-            Text("Seleccione la sucursal o caja desde la cual emitirá el comprobante.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
-        }
-        itemsIndexed(pvs) { _, pv ->
-            Card(
-                modifier = Modifier.fillMaxWidth().clickable { onSelect(pv) },
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(modifier = Modifier.size(40.dp), shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(text = pv.numero.toString(), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text(pv.nombre, style = MaterialTheme.typography.titleMedium)
+fun TypeSelectionView(types: List<CfeFiscalDocumentAvailabilityItemDto>, onSelect: (CfeFiscalDocumentAvailabilityItemDto) -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Text("Tipo de Documento", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 16.dp))
+        LazyColumn {
+            itemsIndexed(types) { _, type ->
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    enabled = type.habilitado,
+                    onClick = { onSelect(type) }
+                ) {
+                    ListItemContent(
+                        headline = type.name,
+                        supporting = if (type.habilitado) {
+                            "Serie ${type.serie ?: "-"} | Próximo: ${type.numeroActual ?: "-"}"
+                        } else {
+                            type.motivoNoHabilitado ?: "No disponible"
+                        },
+                        trailing = { if (type.habilitado) Icon(Icons.Default.ChevronRight, null) }
+                    )
                 }
             }
         }
@@ -115,414 +120,114 @@ fun SelectPOSView(pvs: List<PuntoVentaDto>, onSelect: (PuntoVentaDto) -> Unit) {
 }
 
 @Composable
-fun SelectTypeView(types: List<CfeFiscalDocumentAvailabilityItemDto>, onSelect: (CfeFiscalDocumentAvailabilityItemDto) -> Unit) {
-    LazyColumn(contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { 
-            Text("Tipo de Documento", style = MaterialTheme.typography.headlineMedium)
-            Text("Seleccione el tipo de comprobante fiscal a generar.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
-        }
-        itemsIndexed(types) { _, type ->
-            Card(
-                modifier = Modifier.fillMaxWidth().clickable(enabled = type.habilitado) { onSelect(type) },
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = if (type.habilitado) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = if (type.habilitado) 1.dp else 0.dp)
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = type.name, 
-                            style = MaterialTheme.typography.titleMedium, 
-                            fontWeight = FontWeight.Bold,
-                            color = if (type.habilitado) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                        )
-                        if (!type.habilitado) {
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Surface(color = MaterialTheme.colorScheme.error.copy(alpha = 0.1f), shape = RoundedCornerShape(4.dp)) {
-                                Text("No Habilitado", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                            }
-                        }
-                    }
-                    Text("Serie: ${type.serie ?: "Auto"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-                    if (!type.habilitado && type.motivoNoHabilitado != null) {
-                        Text(text = type.motivoNoHabilitado, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 4.dp))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun FillFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvailabilityItemDto, catalogs: CatalogData) {
-    var showClienteSearch by remember { mutableStateOf(false) }
-    var showProductoSearch by remember { mutableStateOf(false) }
-
-    val isDevolucion = type.cfeCode in listOf(102, 112, 103, 113)
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            modifier = Modifier.weight(1f).padding(horizontal = 24.dp),
-            contentPadding = PaddingValues(vertical = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
+fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvailabilityItemDto, catalogs: CatalogData) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        LazyColumn(modifier = Modifier.weight(1f)) {
             item {
-                Column {
-                    Text(text = type.name, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
-                    Text(text = "Complete la información de la línea y cabecera.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                }
+                Text("${type.name} - Serie ${type.serie}", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                ClientSelector(viewModel)
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                DropdownSelector("Moneda", catalogs.monedas, viewModel.selectedMoneda) { viewModel.selectedMoneda = it }
+                Spacer(modifier = Modifier.height(8.dp))
+                DropdownSelector("Almacén", catalogs.almacenes, viewModel.selectedAlmacen) { viewModel.selectedAlmacen = it }
+                Spacer(modifier = Modifier.height(8.dp))
+                DropdownSelector("Forma de Pago", catalogs.formasPago, viewModel.selectedFormaPago) { viewModel.selectedFormaPago = it }
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                Text("Líneas del Documento", style = MaterialTheme.typography.titleMedium)
             }
-
-            // Client Selection Card
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth().clickable { showClienteSearch = true },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                ) {
-                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Surface(modifier = Modifier.size(48.dp), shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)) {
-                            Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(12.dp))
-                        }
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Text("Cliente", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            Text(
-                                text = viewModel.selectedCliente?.nombre ?: "Seleccionar Cliente...",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = if (viewModel.selectedCliente != null) FontWeight.Bold else FontWeight.Normal,
-                                color = if (viewModel.selectedCliente != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Secondary Options Card
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            DropdownSelector("Moneda", catalogs.monedas, viewModel.selectedMoneda, { viewModel.selectedMoneda = it }, Modifier.weight(1f))
-                            DropdownSelector("Almacén", catalogs.almacenes, viewModel.selectedAlmacen, { viewModel.selectedAlmacen = it }, Modifier.weight(1f))
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            DropdownSelector("Forma Pago", catalogs.formasPago, viewModel.selectedFormaPago, { viewModel.selectedFormaPago = it }, Modifier.weight(1f))
-                            if (catalogs.vencimientos.isNotEmpty()) {
-                                DropdownSelector("Vencimiento", catalogs.vencimientos, viewModel.selectedVencimiento, { viewModel.selectedVencimiento = it }, Modifier.weight(1f))
-                            }
-                        }
-
-                        if (isDevolucion) {
-                            OutlinedTextField(
-                                value = viewModel.idDocumentoOrigen?.toString() ?: "",
-                                onValueChange = { viewModel.idDocumentoOrigen = it.toLongOrNull() },
-                                label = { Text("ID Documento Origen") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Lines Section
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Detalle de Productos", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    FilledTonalButton(onClick = { showProductoSearch = true }, shape = RoundedCornerShape(12.dp)) {
-                        Icon(Icons.Default.Add, "Agregar", modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Añadir")
-                    }
-                }
-            }
-
-            if (viewModel.lineas.isEmpty()) {
-                item {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(32.dp))
-                            Text("No hay productos añadidos", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
-                        }
-                    }
-                }
-            }
-
+            
             itemsIndexed(viewModel.lineas) { index, linea ->
-                LineaResumenItem(linea) { viewModel.removeLinea(index) }
+                LineItemRow(linea, onRemove = { viewModel.removeLinea(index) })
             }
-
+            
             item {
+                OutlinedButton(
+                    onClick = { viewModel.isConfiguringLine = true },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.Add, null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("AGREGAR PRODUCTO")
+                }
+                
                 OutlinedTextField(
                     value = viewModel.notas,
                     onValueChange = { viewModel.notas = it },
-                    label = { Text("Observaciones / Notas") },
+                    label = { Text("Notas/Observaciones") },
                     modifier = Modifier.fillMaxWidth(),
-                    minLines = 3,
-                    shape = RoundedCornerShape(16.dp)
+                    minLines = 3
                 )
+                Spacer(modifier = Modifier.height(80.dp))
             }
         }
-
-        // Bottom Summary & Action
-        Surface(shadowElevation = 16.dp, color = MaterialTheme.colorScheme.surface) {
-            Column(modifier = Modifier.padding(24.dp).navigationBarsPadding()) {
-                val subtotal = viewModel.lineas.sumOf { it.cantidad * it.precioUnitario }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Total Estimado", style = MaterialTheme.typography.titleMedium)
+        
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(8.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        ) {
+            val total = viewModel.lineas.sumOf { (it.precioUnitario * it.cantidad) * (1 + (it.producto.tasaIva ?: 0.0)) }
+            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("TOTAL ESTIMADO", style = MaterialTheme.typography.labelMedium)
                     Text(
-                        text = "${viewModel.selectedMoneda?.codigo ?: ""} ${String.format(Locale.US, "%.2f", subtotal)}",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.primary
+                        "${viewModel.selectedMoneda?.codigo ?: ""} ${NumberFormat.getCurrencyInstance().format(total).replace("$", "")}",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
                     )
                 }
-                Spacer(Modifier.height(16.dp))
-                val isReady = viewModel.selectedCliente != null && viewModel.lineas.isNotEmpty() && (!isDevolucion || viewModel.idDocumentoOrigen != null)
                 Button(
                     onClick = { viewModel.proceedToEmission() },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    enabled = isReady,
-                    shape = RoundedCornerShape(16.dp)
+                    enabled = viewModel.selectedCliente != null && viewModel.lineas.isNotEmpty(),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("EMITIR COMPROBANTE", fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text("EMITIR")
                 }
             }
         }
     }
 
-    if (showClienteSearch) {
-        SearchableSelectionDialog(
-            title = "Buscar Cliente",
-            onSearch = { viewModel.searchClients(it) },
-            results = viewModel.clientSearchResults,
-            isSearching = viewModel.isSearching,
-            onDismiss = { showClienteSearch = false },
-            onSelect = { viewModel.selectedCliente = it; showClienteSearch = false },
-            itemContent = { Text(it.nombre, fontWeight = FontWeight.SemiBold) }
-        )
-    }
-    
-    if (showProductoSearch) {
-        SearchableSelectionDialog(
-            title = "Buscar Producto / Servicio",
-            onSearch = { viewModel.searchProducts(it) },
-            results = viewModel.productSearchResults,
-            isSearching = viewModel.isSearching,
-            onDismiss = { showProductoSearch = false },
-            onSelect = { 
-                viewModel.startLineConfiguration(it)
-                showProductoSearch = false 
-            },
-            itemContent = {
-                Column {
-                    Text(it.nombre, fontWeight = FontWeight.Bold)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Código: ${it.codigo ?: "N/A"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                        Text("Precio: ${it.precio ?: 0.0}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            }
-        )
-    }
-
-    if (viewModel.isConfiguringLine && viewModel.productBeingConfigured != null) {
-        LineConfigurationModal(
-            producto = viewModel.productBeingConfigured!!,
-            isResolvingC4 = viewModel.isResolvingC4,
-            sugerido = viewModel.lineConfigurationSugerido,
-            indicadores = catalogs.indicadoresC4,
-            onConfirm = { cant, precio, ind, indSugerido, label ->
-                viewModel.confirmLineConfiguration(cant, precio, ind, indSugerido, label)
-            },
-            onCancel = { viewModel.cancelLineConfiguration() }
-        )
+    if (viewModel.isConfiguringLine) {
+        ProductSearchAndConfigDialog(viewModel)
     }
 }
 
 @Composable
-fun LineaResumenItem(linea: LineaForm, onRemove: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.Top) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(linea.producto.nombre, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("Cant: ${linea.cantidad} x ${linea.precioUnitario}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                }
-                IconButton(onClick = onRemove, modifier = Modifier.size(24.dp)) { 
-                    Icon(Icons.Default.Delete, "Eliminar", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)) 
+fun LineItemRow(linea: LineaForm, onRemove: () -> Unit) {
+    val total = (linea.precioUnitario * linea.cantidad) * (1 + (linea.producto.tasaIva ?: 0.0))
+    OutlinedCard(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(linea.producto.nombre, fontWeight = FontWeight.Bold)
+                Text("${linea.cantidad} x ${linea.precioUnitario} (+ IVA)", style = MaterialTheme.typography.bodySmall)
+                if (linea.indicadorFacturacionC4 != null) {
+                    AssistChip(
+                        onClick = {}, 
+                        label = { Text("C4: ${linea.indicadorFacturacionC4}") },
+                        colors = AssistChipDefaults.assistChipColors(labelColor = MaterialTheme.colorScheme.secondary)
+                    )
                 }
             }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                if (linea.indicadorFacturacionC4SugeridoLabel != null) {
-                    Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f), shape = RoundedCornerShape(6.dp)) {
-                        Text(
-                            text = "C4: ${linea.indicadorFacturacionC4SugeridoLabel}", 
-                            style = MaterialTheme.typography.labelSmall, 
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                } else {
-                    Spacer(Modifier.width(1.dp))
-                }
-                Text(
-                    text = String.format(Locale.US, "%.2f", linea.cantidad * linea.precioUnitario),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
+            Text(NumberFormat.getCurrencyInstance().format(total), fontWeight = FontWeight.ExtraBold)
+            IconButton(onClick = onRemove) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LineConfigurationModal(
-    producto: ProductoDto,
-    isResolvingC4: Boolean,
-    sugerido: CfeFiscalIndicadorSugeridoDto?,
-    indicadores: List<CfeFiscalIndicadorFacturacionDto>,
-    onConfirm: (Double, Double, Int?, Int?, String?) -> Unit,
-    onCancel: () -> Unit
-) {
-    var cantidadText by remember { mutableStateOf("1.0") }
-    var precioText by remember { mutableStateOf((producto.precio ?: 0.0).toString()) }
-    var selectedValue by remember { mutableStateOf<Int?>(null) }
-    var selectedLabel by remember { mutableStateOf<String?>(null) }
-    
-    LaunchedEffect(sugerido) {
-        if (sugerido != null) {
-            selectedValue = sugerido.persistedValue
-            selectedLabel = sugerido.label
-        }
-    }
-
-    BasicAlertDialog(
-        onDismissRequest = onCancel,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
-        modifier = Modifier.padding(24.dp),
-        content = {
-            Surface(
-                shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp
-            ) {
-                Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    Text("Configurar Línea", style = MaterialTheme.typography.headlineSmall)
-                    
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(producto.nombre, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("Tasa IVA: ${(producto.tasaIva?.let { it * 100 } ?: 0.0)}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                    }
-                    
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(
-                            value = cantidadText,
-                            onValueChange = { cantidadText = it },
-                            label = { Text("Cantidad") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        OutlinedTextField(
-                            value = precioText,
-                            onValueChange = { precioText = it },
-                            label = { Text("Precio Unit.") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                    }
-                    
-                    if (isResolvingC4) {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp))
-                    } else {
-                        var expanded by remember { mutableStateOf(false) }
-                        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
-                            OutlinedTextField(
-                                value = selectedLabel ?: "Sin indicador C4",
-                                onValueChange = {},
-                                readOnly = true,
-                                label = { Text("Indicador de Facturación (C4)") },
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                                DropdownMenuItem(text = { Text("Sin indicador C4") }, onClick = { selectedValue = null; selectedLabel = null; expanded = false })
-                                indicadores.forEach { ind ->
-                                    DropdownMenuItem(text = { Text(ind.name) }, onClick = { selectedValue = ind.id; selectedLabel = ind.name; expanded = false })
-                                }
-                            }
-                        }
-                        if (sugerido != null && sugerido.isAutomatic) {
-                            Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f), shape = RoundedCornerShape(8.dp)) {
-                                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Sugerencia aplicada automáticamente.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                }
-                            }
-                        }
-                    }
-
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = onCancel) { Text("Cancelar") }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = {
-                                val c = cantidadText.toDoubleOrNull() ?: 1.0
-                                val p = precioText.toDoubleOrNull() ?: 0.0
-                                onConfirm(c, p, selectedValue, sugerido?.suggestedValue, selectedLabel)
-                            },
-                            enabled = !isResolvingC4,
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("Confirmar")
-                        }
-                    }
-                }
-            }
-        }
-    )
-}
-
-@Composable
-fun SuccessView(message: String, onViewDetail: () -> Unit, onNew: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier = modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(80.dp))
+fun SuccessView(documentoId: Long, message: String, onFinish: () -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(100.dp))
         Spacer(modifier = Modifier.height(24.dp))
-        Text("Emisión Exitosa", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text(message, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+        Text("¡Emisión Exitosa!", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text(message, style = MaterialTheme.typography.bodyLarge, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         Spacer(modifier = Modifier.height(48.dp))
-        Button(onClick = onViewDetail, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp)) {
-            Text("VER DETALLE FISCAL")
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-        TextButton(onClick = onNew) {
-            Text("NUEVA EMISIÓN")
+        Button(onClick = onFinish, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp)) {
+            Text("VER COMPROBANTE")
         }
     }
 }
@@ -537,7 +242,7 @@ fun ErrorView(error: AppError, onReset: () -> Unit, modifier: Modifier = Modifie
         }
         Spacer(modifier = Modifier.height(24.dp))
         Text("Error en Emisión", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text(error.message ?: "Ocurrió un error inesperado al procesar el documento.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+        Text(error.getDisplayMessage(), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         Spacer(modifier = Modifier.height(48.dp))
         Button(onClick = onReset, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
             Text("VOLVER AL INICIO")
@@ -555,20 +260,31 @@ fun ProcessingState(message: String, modifier: Modifier = Modifier) {
     }
 }
 
+@Composable
+fun ListItemContent(headline: String, supporting: String? = null, trailing: @Composable (() -> Unit)? = null) {
+    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(headline, style = MaterialTheme.typography.titleMedium)
+            if (supporting != null) {
+                Text(supporting, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        trailing?.invoke()
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DropdownSelector(label: String, items: List<CatalogoItemDto>, selected: CatalogoItemDto?, onSelect: (CatalogoItemDto) -> Unit, modifier: Modifier = Modifier) {
+fun DropdownSelector(label: String, items: List<CatalogoItemDto>, selected: CatalogoItemDto?, onSelect: (CatalogoItemDto) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }, modifier = modifier) {
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
         OutlinedTextField(
-            selected?.nombre ?: "Seleccionar...",
+            value = selected?.nombre ?: "",
             onValueChange = {},
             readOnly = true,
             label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            textStyle = MaterialTheme.typography.bodyMedium
+            modifier = Modifier.menuAnchor().fillMaxWidth()
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             items.forEach { item ->
@@ -578,51 +294,121 @@ fun DropdownSelector(label: String, items: List<CatalogoItemDto>, selected: Cata
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun <T> SearchableSelectionDialog(
-    title: String,
-    onSearch: (String) -> Unit,
-    results: List<T>,
-    isSearching: Boolean,
-    onDismiss: () -> Unit,
-    onSelect: (T) -> Unit,
-    itemContent: @Composable (T) -> Unit
-) {
-    var query by remember { mutableStateOf("") }
+fun ClientSelector(viewModel: EmissionViewModel) {
+    var showDialog by remember { mutableStateOf(false) }
+    OutlinedCard(onClick = { showDialog = true }, modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Person, null, modifier = Modifier.padding(end = 16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(viewModel.selectedCliente?.nombre ?: "Seleccionar Cliente", style = MaterialTheme.typography.titleMedium)
+                Text(viewModel.selectedCliente?.ruc ?: "Toque para buscar", style = MaterialTheme.typography.bodyMedium)
+            }
+            Icon(Icons.Default.Search, null)
+        }
+    }
     
-    BasicAlertDialog(
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
-        modifier = Modifier.padding(24.dp),
-        content = {
-            Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surface) {
-                Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text(title, style = MaterialTheme.typography.headlineSmall)
+    if (showDialog) {
+        Dialog(onDismissRequest = { showDialog = false }) {
+            Card(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.8f)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    var query by remember { mutableStateOf("") }
                     OutlinedTextField(
                         value = query,
-                        onValueChange = { query = it; onSearch(it) },
-                        label = { Text("Escriba para filtrar...") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
+                        onValueChange = { query = it; viewModel.searchClients(it) },
+                        label = { Text("Buscar cliente...") },
+                        modifier = Modifier.fillMaxWidth()
                     )
-                    Box(modifier = Modifier.weight(1f, fill = false).heightIn(max = 400.dp)) {
-                        if (isSearching) {
-                            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                        } else {
-                            LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                itemsIndexed(results) { _, item ->
-                                    Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onSelect(item) }.padding(12.dp)) {
-                                        itemContent(item)
-                                    }
-                                }
-                            }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyColumn {
+                        itemsIndexed(viewModel.clientSearchResults) { _, client ->
+                            ListItem(
+                                headlineContent = { Text(client.nombre) },
+                                supportingContent = { Text(client.ruc ?: "") },
+                                modifier = Modifier.clickable { viewModel.selectedCliente = client; showDialog = false }
+                            )
                         }
                     }
-                    TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Cerrar") }
                 }
             }
         }
-    )
+    }
+}
+
+@Composable
+fun ProductSearchAndConfigDialog(viewModel: EmissionViewModel) {
+    Dialog(onDismissRequest = { viewModel.cancelLineConfiguration() }) {
+        Card(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f)) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                if (viewModel.productBeingConfigured == null) {
+                    Text("Buscar Producto", style = MaterialTheme.typography.titleLarge)
+                    var query by remember { mutableStateOf("") }
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it; viewModel.searchProducts(it) },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Nombre o código...") }
+                    )
+                    LazyColumn {
+                        itemsIndexed(viewModel.productSearchResults) { _, p ->
+                            ListItem(
+                                headlineContent = { Text(p.nombre) },
+                                supportingContent = { Text("Precio: ${p.precio}") },
+                                modifier = Modifier.clickable { viewModel.startLineConfiguration(p) }
+                            )
+                        }
+                    }
+                } else {
+                    LineConfigurator(viewModel)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LineConfigurator(viewModel: EmissionViewModel) {
+    val product = viewModel.productBeingConfigured!!
+    var qty by remember { mutableStateOf("1") }
+    var price by remember { mutableStateOf(product.precio?.toString() ?: "0") }
+    var selectedC4 by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(viewModel.lineConfigurationSugerido) {
+        selectedC4 = viewModel.lineConfigurationSugerido?.persistedValue
+    }
+
+    Column {
+        Text(product.nombre, style = MaterialTheme.typography.titleLarge)
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(value = qty, onValueChange = { qty = it }, label = { Text("Cantidad") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = price, onValueChange = { price = it }, label = { Text("Precio Unitario") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
+        
+        if (viewModel.isResolvingC4) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
+        }
+
+        viewModel.cachedCatalogs?.let { catalogs ->
+            DropdownSelector(
+                label = "Indicador Facturación (C4)",
+                items = catalogs.indicadoresC4.map { CatalogoItemDto(it.id, it.name) },
+                selected = catalogs.indicadoresC4.find { it.id == selectedC4 }?.let { CatalogoItemDto(it.id, it.name) }
+            ) { selectedC4 = it.id }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+        Button(
+            onClick = { viewModel.confirmLineConfiguration(qty.toDoubleOrNull() ?: 0.0, price.toDoubleOrNull() ?: 0.0, selectedC4) },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("CONFIRMAR") }
+    }
+}
+
+@Composable
+fun ListItem(headlineContent: @Composable () -> Unit, supportingContent: @Composable (() -> Unit)? = null, modifier: Modifier = Modifier) {
+    Row(modifier = modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f)) {
+            headlineContent()
+            supportingContent?.invoke()
+        }
+    }
 }

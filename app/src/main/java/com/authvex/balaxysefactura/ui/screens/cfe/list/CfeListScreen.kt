@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.authvex.balaxysefactura.core.network.CfeSummaryDto
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -25,7 +24,7 @@ import com.authvex.balaxysefactura.core.network.CfeSummaryDto
 fun CfeListScreen(
     viewModel: CfeListViewModel,
     onBack: () -> Unit,
-    onNavigateToDetail: (Int) -> Unit
+    onNavigateToDetail: (Long) -> Unit
 ) {
     val uiState = viewModel.uiState
 
@@ -72,7 +71,6 @@ fun CfeListScreen(
                 }
                 is CfeListUiState.Success -> {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Quick Filters Header (Placeholder)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -96,7 +94,7 @@ fun CfeListScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             items(uiState.documents) { doc ->
-                                CfeItemCard(doc = doc, onClick = { onNavigateToDetail(doc.documentoId) })
+                                CfeItemCard(doc = doc, onClick = { onNavigateToDetail(doc.documentoId.toLong()) })
                             }
                         }
                     }
@@ -123,7 +121,6 @@ fun CfeItemCard(doc: CfeSummaryDto, onClick: () -> Unit) {
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Type Icon / Circle
             Surface(
                 modifier = Modifier.size(48.dp),
                 shape = RoundedCornerShape(12.dp),

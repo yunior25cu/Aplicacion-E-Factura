@@ -11,6 +11,9 @@ sealed class AppError : Exception() {
     data class Validation(override val message: String, val errors: Map<String, List<String>>? = null) : AppError()
     data class Unexpected(override val message: String) : AppError()
 
+    override val message: String?
+        get() = getDisplayMessage()
+
     fun getDisplayMessage(): String = when (this) {
         is Network -> "No hay conexión a internet."
         is Timeout -> "La conexión ha expirado. Inténtalo de nuevo."

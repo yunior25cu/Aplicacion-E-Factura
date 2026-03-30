@@ -77,7 +77,8 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
     var lineConfigurationSugerido by mutableStateOf<CfeFiscalIndicadorSugeridoDto?>(null)
     var isResolvingC4 by mutableStateOf(false)
 
-    private var cachedCatalogs: CatalogData? = null
+    var cachedCatalogs: CatalogData? = null
+        private set
 
     init {
         loadPuntosVenta()

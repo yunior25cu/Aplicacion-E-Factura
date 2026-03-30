@@ -18,7 +18,7 @@ sealed class CfeDetailUiState {
 
 class CfeDetailViewModel(
     private val repository: CfeRepository,
-    private val documentoId: Int
+    private val documentoId: Long
 ) : ViewModel() {
 
     var uiState by mutableStateOf<CfeDetailUiState>(CfeDetailUiState.Loading)
@@ -31,7 +31,7 @@ class CfeDetailViewModel(
     fun loadDetail() {
         viewModelScope.launch {
             uiState = CfeDetailUiState.Loading
-            repository.getDocumentDetail(documentoId).onSuccess { doc ->
+            repository.getDocumentDetail(documentoId.toInt()).onSuccess { doc ->
                 uiState = CfeDetailUiState.Success(doc)
             }.onFailure { error ->
                 uiState = CfeDetailUiState.Error(error as? AppError ?: AppError.Unexpected(error.message ?: "Error desconocido"))

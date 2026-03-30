@@ -33,7 +33,11 @@ object ErrorMapper {
             409 -> AppError.Conflict
             400 -> parseBadRequest(errorBody)
             in 500..599 -> AppError.ServerError(code)
-            else -> AppError.Unexpected("Error HTTP: $code")
+            else -> {
+                // Mejora quirúrgica: Si es un error desconocido, intentar extraer el mensaje
+                val detail = parseJsonDetail(errorBody)
+                if (detail != null) AppError.Unexpected(detail) else AppError.Unexpected("Error HTTP: $code")
+            }
         }
     }
 
@@ -55,12 +59,10 @@ object ErrorMapper {
         return try {
             val jsonElement = json.parseToJsonElement(errorBody).jsonObject
             
-            // 1. Intentar buscar "detail", "message" o "title"
             val message = jsonElement["detail"]?.jsonPrimitive?.content
                 ?: jsonElement["message"]?.jsonPrimitive?.content
                 ?: jsonElement["title"]?.jsonPrimitive?.content
             
-            // 2. Intentar buscar "errors" (ModelState)
             val errorsMap = jsonElement["errors"]?.jsonObject?.mapValues { entry ->
                 entry.value.jsonArray.map { it.jsonPrimitive.content }
             }
@@ -68,6 +70,7 @@ object ErrorMapper {
             if (message != null || errorsMap != null) {
                 AppError.Validation(message ?: "Error de validación", errorsMap)
             } else {
+                // Si no hay estructura conocida, devolver el body crudo como mensaje de validación
                 AppError.Validation(errorBody)
             }
         } catch (ex: Exception) {

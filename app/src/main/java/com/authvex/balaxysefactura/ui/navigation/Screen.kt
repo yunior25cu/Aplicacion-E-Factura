@@ -6,7 +6,7 @@ sealed class Screen(val route: String) {
     object DevTools : Screen("devtools")
     object CfeList : Screen("cfe_list")
     object CfeDetail : Screen("cfe_detail/{documentoId}") {
-        fun createRoute(documentoId: Int) = "cfe_detail/$documentoId"
+        fun createRoute(documentoId: Long) = "cfe_detail/$documentoId"
     }
     object Emission : Screen("emission")
     object Reports : Screen("reports")
