@@ -139,11 +139,20 @@ fun CfeItemCard(doc: CfeSummaryDto, onClick: () -> Unit) {
             Spacer(modifier = Modifier.width(16.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "${doc.serie ?: ""} ${doc.numero ?: ""}",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "${doc.serie ?: ""} ${doc.numero ?: ""}",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = getCfeTypeLabel(doc.cfeCode),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
                 Text(
                     text = doc.receptor ?: "Sin receptor",
                     style = MaterialTheme.typography.bodySmall,
@@ -173,11 +182,45 @@ fun CfeItemCard(doc: CfeSummaryDto, onClick: () -> Unit) {
     }
 }
 
+private fun getCfeTypeLabel(code: Int?): String {
+    return when (code) {
+        101 -> "e-Ticket"
+        102 -> "NC e-Ticket"
+        103 -> "ND e-Ticket"
+        111 -> "e-Factura"
+        112 -> "NC e-Factura"
+        113 -> "ND e-Factura"
+        121 -> "e-Factura Exp."
+        122 -> "NC e-Factura Exp."
+        123 -> "ND e-Factura Exp."
+        124 -> "e-Remito Exp."
+        131 -> "e-Ticket CA"
+        132 -> "NC e-Ticket CA"
+        133 -> "ND e-Ticket CA"
+        141 -> "e-Factura CA"
+        142 -> "NC e-Factura CA"
+        143 -> "ND e-Factura CA"
+        151 -> "e-Boleta Entrada"
+        152 -> "NC e-Boleta Entrada"
+        153 -> "ND e-Boleta Entrada"
+        181 -> "e-Remito"
+        182 -> "e-Resguardo"
+        else -> if (code != null) "CFE $code" else "CFE"
+    }
+}
+
 @Composable
 fun StatusChip(estado: Int?) {
     val (label, color) = when (estado) {
-        6 -> "Aceptado" to Color(0xFF2E7D32)
+        0 -> "Sin emitir" to Color(0xFF73777F)
         1 -> "Pendiente" to Color(0xFFED6C02)
+        2 -> "En proceso" to Color(0xFFED6C02)
+        3 -> "Enviado" to Color(0xFF2196F3)
+        4 -> "Aceptado" to Color(0xFF2E7D32)
+        5 -> "Observado" to Color(0xFFED6C02)
+        6 -> "Rechazado" to Color(0xFFD32F2F)
+        7 -> "Contingencia" to Color(0xFFED6C02)
+        8 -> "Anulado" to Color(0xFF73777F)
         else -> "Estado $estado" to Color(0xFF73777F)
     }
 

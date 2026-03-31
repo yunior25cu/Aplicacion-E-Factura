@@ -16,10 +16,21 @@ sealed class ReportsUiState<out T> {
     object Empty : ReportsUiState<Nothing>()
 }
 
+enum class ReportViewMode { LIST, CHART }
+enum class SerieViewMode { BARS, LINE }
+
 class ReportsViewModel(private val repository: ReportsRepository) : ViewModel() {
+
+    private val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
     var fechaDesde by mutableStateOf("")
     var fechaHasta by mutableStateOf("")
+
+    // View Modes
+    var serieViewMode by mutableStateOf(SerieViewMode.BARS)
+    var clientesViewMode by mutableStateOf(ReportViewMode.LIST)
+    var productosViewMode by mutableStateOf(ReportViewMode.LIST)
+    var documentosViewMode by mutableStateOf(ReportViewMode.LIST)
 
     var resumenState by mutableStateOf<ReportsUiState<VentasResumenResponse>>(ReportsUiState.Loading)
     var serieState by mutableStateOf<ReportsUiState<VentasSerieResponse>>(ReportsUiState.Loading)
@@ -28,11 +39,42 @@ class ReportsViewModel(private val repository: ReportsRepository) : ViewModel() 
     var documentosState by mutableStateOf<ReportsUiState<VentasPorDocumentoResponse>>(ReportsUiState.Loading)
 
     init {
+        applyPreset(DatePreset.LAST_30_DAYS)
+    }
+
+    fun applyPreset(preset: DatePreset) {
         val calendar = Calendar.getInstance()
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        fechaHasta = sdf.format(calendar.time)
-        calendar.add(Calendar.DAY_OF_YEAR, -30)
-        fechaDesde = sdf.format(calendar.time)
+        val hasta = sdf.format(calendar.time)
+        
+        val desde = when (preset) {
+            DatePreset.TODAY -> hasta
+            DatePreset.LAST_7_DAYS -> {
+                calendar.add(Calendar.DAY_OF_YEAR, -6)
+                sdf.format(calendar.time)
+            }
+            DatePreset.LAST_30_DAYS -> {
+                calendar.add(Calendar.DAY_OF_YEAR, -29)
+                sdf.format(calendar.time)
+            }
+            DatePreset.THIS_MONTH -> {
+                calendar.set(Calendar.DAY_OF_MONTH, 1)
+                sdf.format(calendar.time)
+            }
+            DatePreset.LAST_MONTH -> {
+                calendar.add(Calendar.MONTH, -1)
+                calendar.set(Calendar.DAY_OF_MONTH, 1)
+                val d = sdf.format(calendar.time)
+                calendar.set(Calendar.DAY_OF_MONTH, calendar.getActualMaximum(Calendar.DAY_OF_MONTH))
+                fechaHasta = sdf.format(calendar.time)
+                return updateDateRange(d, fechaHasta)
+            }
+        }
+        updateDateRange(desde, hasta)
+    }
+
+    fun updateDateRange(desde: String, hasta: String) {
+        fechaDesde = desde
+        fechaHasta = hasta
         loadAll()
     }
 
@@ -96,4 +138,12 @@ class ReportsViewModel(private val repository: ReportsRepository) : ViewModel() 
                 .onFailure { documentosState = ReportsUiState.Error(it.message ?: "Error desconocido") }
         }
     }
+}
+
+enum class DatePreset(val label: String) {
+    TODAY("Hoy"),
+    LAST_7_DAYS("Últimos 7 días"),
+    LAST_30_DAYS("Últimos 30 días"),
+    THIS_MONTH("Este mes"),
+    LAST_MONTH("Mes anterior")
 }

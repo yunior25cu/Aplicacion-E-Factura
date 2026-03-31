@@ -98,43 +98,26 @@ fun CfeDetailContent(doc: CfeDetailDto) {
                     text = "${doc.serie ?: ""} ${doc.numero ?: ""}",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "ID: ${doc.documentoId}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                    text = "Tipo CFE: ${getCfeTypeLabel(doc.cfeCode)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 20.dp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "${doc.monedaSimbolo ?: ""} ${doc.importeTotal}",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
                 )
-                
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column {
-                        Text("TOTAL", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-                        Text(
-                            text = "${doc.monedaSimbolo ?: ""} ${String.format("%.2f", doc.importeTotal ?: 0.0)}",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("IVA", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-                        Text(
-                            text = "${doc.monedaSimbolo ?: ""} ${String.format("%.2f", doc.iva ?: 0.0)}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
             }
         }
 
         DetailSectionCard(title = "Receptor") {
             DetailItemRow(label = "Nombre / Razón Social", value = doc.receptor)
-            DetailItemRow(label = "Estado Receptor", value = doc.estadoReceptor?.toString())
+            DetailItemRow(label = "Estado Receptor", value = getEstadoReceptorLabel(doc.estadoReceptor))
         }
 
         DetailSectionCard(title = "Cronología") {
@@ -144,22 +127,35 @@ fun CfeDetailContent(doc: CfeDetailDto) {
         }
 
         if (!doc.ultimoError.isNullOrBlank()) {
+            val isAceptado = doc.estadoCfe == 4 // Mapping oficial: 4 -> Aceptado
+            val containerColor = if (isAceptado)
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            else
+                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+
+            val contentColor = if (isAceptado)
+                MaterialTheme.colorScheme.onSurfaceVariant
+            else
+                MaterialTheme.colorScheme.error
+
+            val title = if (isAceptado) "Último Error Histórico" else "Último Error Registrado"
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)),
+                colors = CardDefaults.cardColors(containerColor = containerColor),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Último Error Registrado",
+                        text = title,
                         style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.error,
+                        color = contentColor,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = doc.ultimoError,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        color = if (isAceptado) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onErrorContainer,
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -170,6 +166,42 @@ fun CfeDetailContent(doc: CfeDetailDto) {
     }
 }
 
+private fun getCfeTypeLabel(code: Int?): String {
+    return when (code) {
+        101 -> "e-Ticket"
+        102 -> "NC e-Ticket"
+        103 -> "ND e-Ticket"
+        111 -> "e-Factura"
+        112 -> "NC e-Factura"
+        113 -> "ND e-Factura"
+        121 -> "e-Factura Exp."
+        122 -> "NC e-Factura Exp."
+        123 -> "ND e-Factura Exp."
+        124 -> "e-Remito Exp."
+        131 -> "e-Ticket CA"
+        132 -> "NC e-Ticket CA"
+        133 -> "ND e-Ticket CA"
+        141 -> "e-Factura CA"
+        142 -> "NC e-Factura CA"
+        143 -> "ND e-Factura CA"
+        151 -> "e-Boleta Entrada"
+        152 -> "NC e-Boleta Entrada"
+        153 -> "ND e-Boleta Entrada"
+        181 -> "e-Remito"
+        182 -> "e-Resguardo"
+        else -> if (code != null) "CFE $code" else "CFE"
+    }
+}
+
+private fun getEstadoReceptorLabel(estado: Int?): String = when (estado) {
+    0 -> "Sin estado"
+    1 -> "Pendiente"
+    2 -> "Aceptado"
+    3 -> "Observado"
+    4 -> "Rechazado"
+    else -> "Estado $estado"
+}
+
 @Composable
 fun DetailSectionCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -178,15 +210,15 @@ fun DetailSectionCard(title: String, content: @Composable ColumnScope.() -> Unit
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+            modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
         )
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp)
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
         ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(modifier = Modifier.padding(16.dp)) {
                 content()
             }
         }
@@ -196,20 +228,12 @@ fun DetailSectionCard(title: String, content: @Composable ColumnScope.() -> Unit
 @Composable
 fun DetailItemRow(label: String, value: String?) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(
-            text = label, 
-            style = MaterialTheme.typography.bodyMedium, 
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-        )
-        Text(
-            text = value ?: "—", 
-            style = MaterialTheme.typography.bodyMedium, 
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface
-        )
+        Text(text = label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text = value ?: "-", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium)
     }
 }

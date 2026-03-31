@@ -49,8 +49,8 @@ data class VentasComparacionDto(
     val cantidadDocumentosAnterior: Int,
     val deltaImporteBase: Double,
     val deltaCantidadDocumentos: Int,
-    val variacionImportePct: Double,
-    val variacionCantidadPct: Double
+    val variacionImportePct: Double? = null,
+    val variacionCantidadPct: Double? = null
 )
 
 @Serializable
