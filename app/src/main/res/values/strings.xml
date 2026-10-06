@@ -1,3 +1,3 @@
 <resources>
-    <string name="app_name">Balaxys Efactura</string>
+    <!-- app_name se define en build.gradle.kts via resValue para soportar Flavors -->
 </resources>

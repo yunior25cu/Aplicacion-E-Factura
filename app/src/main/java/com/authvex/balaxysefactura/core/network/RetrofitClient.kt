@@ -1,5 +1,6 @@
 package com.authvex.balaxysefactura.core.network
 
+import com.authvex.balaxysefactura.BuildConfig
 import com.authvex.balaxysefactura.core.auth.AuthPreferences
 import com.authvex.balaxysefactura.core.network.interceptors.AuthInterceptor
 import com.authvex.balaxysefactura.core.network.interceptors.TokenAuthenticator
@@ -19,7 +20,11 @@ class RetrofitClient(private val authPreferences: AuthPreferences) {
     }
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BODY
+        level = if (BuildConfig.DEBUG) {
+            HttpLoggingInterceptor.Level.BODY
+        } else {
+            HttpLoggingInterceptor.Level.NONE
+        }
     }
 
     // Usamos lazy para evitar circularidad al crear el Authenticator que depende de la Api
