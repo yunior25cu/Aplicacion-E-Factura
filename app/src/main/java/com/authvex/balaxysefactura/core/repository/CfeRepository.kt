@@ -32,6 +32,15 @@ open class CfeRepository(private val api: CfeApi) {
         }
     }
 
+    open suspend fun createFacturaElectronicDraft(request: FacturaCreateDto): Result<Long> {
+        return try {
+            val documentoId = api.createFacturaElectronicDraft(request)
+            Result.success(documentoId)
+        } catch (e: Exception) {
+            Result.failure(ErrorMapper.fromThrowable(e))
+        }
+    }
+
     open suspend fun createDevolucion(request: DevolucionCreateDto): Result<Long> {
         return try {
             val documentoId = api.createDevolucion(request)
@@ -59,7 +68,7 @@ open class CfeRepository(private val api: CfeApi) {
         }
     }
 
-    // --- Catálogos ---
+    // --- Catálogos Paginados ---
     open suspend fun getClientes(query: String? = null): Result<List<ClienteDto>> {
         return try {
             val response = api.getClientes(query = query, limit = 20)
@@ -81,6 +90,14 @@ open class CfeRepository(private val api: CfeApi) {
     open suspend fun getMonedas(): Result<List<CatalogoItemDto>> {
         return try {
             Result.success(api.getMonedas())
+        } catch (e: Exception) {
+            Result.failure(ErrorMapper.fromThrowable(e))
+        }
+    }
+
+    open suspend fun getTasaCambios(fecha: String): Result<List<TasaCambioSimpleDto>> {
+        return try {
+            Result.success(api.getTasaCambios(fecha))
         } catch (e: Exception) {
             Result.failure(ErrorMapper.fromThrowable(e))
         }
@@ -113,6 +130,15 @@ open class CfeRepository(private val api: CfeApi) {
     open suspend fun getListasPrecio(): Result<List<CatalogoItemDto>> {
         return try {
             Result.success(api.getListasPrecio())
+        } catch (e: Exception) {
+            Result.failure(ErrorMapper.fromThrowable(e))
+        }
+    }
+
+    // --- Empresa ---
+    open suspend fun getEmpresa(): Result<EmpresaDto> {
+        return try {
+            Result.success(api.getEmpresa())
         } catch (e: Exception) {
             Result.failure(ErrorMapper.fromThrowable(e))
         }

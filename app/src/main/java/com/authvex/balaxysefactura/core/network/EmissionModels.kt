@@ -34,6 +34,32 @@ data class CatalogoItemDto(
 )
 
 @Serializable
+data class TasaCambioSimpleDto(
+    val id: Int,
+    val codigo: String,
+    val denominacion: String,
+    val simbolo: String? = null,
+    val decimales: Int = 2,
+    val tasaPromedio: Double,
+    val fechaTasa: String? = null
+)
+
+@Serializable
+data class EmpresaDto(
+    val id: Int,
+    val moneda: CatalogoItemDto? = null
+)
+
+enum class CondicionPagoComercial(val apiValue: Int) {
+    CONTADO(1),
+    CREDITO(2);
+
+    companion object {
+        fun fromApiValue(value: Int?) = values().find { it.apiValue == value } ?: CONTADO
+    }
+}
+
+@Serializable
 data class FacturaCreateDto(
     val fechaEmision: String,
     val fechaConfirmacion: String,
@@ -61,7 +87,12 @@ data class FacturaCreateDto(
     val descuentoOriginal: Double = 0.0,
     val ajusteRedondeoOriginal: Double = 0.0,
     val idCentroCosto: Int? = null,
-    val idVendedor: Int? = null
+    val idVendedor: Int? = null,
+    // Intención Fiscal
+    val cfeCodeIntent: Int? = null,
+    val puntoVentaFiscalIntentId: Int? = null,
+    val serieFiscalPreferidaIntent: String? = null,
+    val condicionPagoComercial: Int? = null
 )
 
 @Serializable
@@ -113,8 +144,13 @@ data class DevolucionCreateDto(
     val idCentroCosto: Int? = null,
     val idVendedor: Int? = null,
     val tipoDevolucion: String = "Factura",
-    val naturalezaNota: String, // Credito o Debito
-    val idDocumentoOrigen: Long
+    val naturalezaNota: String,
+    val idDocumentoOrigen: Long,
+    // Intención Fiscal
+    val cfeCodeIntent: Int? = null,
+    val puntoVentaFiscalIntentId: Int? = null,
+    val serieFiscalPreferidaIntent: String? = null,
+    val condicionPagoComercial: Int? = null
 )
 
 @Serializable
@@ -129,6 +165,7 @@ data class FacturaResponse(
 @Serializable
 data class PuntoVentaDto(
     val id: Int,
+    @SerialName("nombre")
     val nombre: String,
     val numero: Int,
     val activo: Boolean,

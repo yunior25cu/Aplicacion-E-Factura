@@ -22,6 +22,9 @@ class EmissionViewModelTest {
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         runBlocking {
+            whenever(repository.getPuntosVenta()).thenReturn(Result.success(emptyList()))
+            whenever(repository.getDocumentosHabilitados(any())).thenReturn(Result.success(emptyList()))
+            whenever(repository.getTasaCambios(any())).thenReturn(Result.success(emptyList()))
             whenever(repository.getIndicadoresFacturacion(any(), any(), anyOrNull(), any())).thenReturn(Result.success(emptyList()))
             whenever(repository.getIndicadorSugerido(any(), any(), anyOrNull(), any(), anyOrNull(), any())).thenReturn(Result.success(CfeFiscalIndicadorSugeridoDto(null, null, false, "N/A")))
             whenever(repository.caePrecheck(any(), any(), anyOrNull(), any())).thenReturn(Result.success(CaePrecheckResultDto(true)))
@@ -37,32 +40,35 @@ class EmissionViewModelTest {
     }
 
     @Test
-    fun `initial load fetches points of sale`() = runTest {
-        val pvs = listOf(PuntoVentaDto(1, "Main", 1, true, true))
+    fun `initial load fetches points of sale and auto-selects if available`() = runTest {
+        val pvs = listOf(PuntoVentaDto(1, "Main", 1, activo = true, esPredeterminado = false))
+        val items = listOf(CfeFiscalDocumentAvailabilityItemDto(111, "e-Factura", true, null, 1, "A"))
+        
         whenever(repository.getPuntosVenta()).thenReturn(Result.success(pvs))
+        whenever(repository.getDocumentosHabilitados(1)).thenReturn(Result.success(listOf(CfeFiscalDocumentAvailabilityGroupDto(1, items))))
 
         val viewModel = EmissionViewModel(repository)
         advanceUntilIdle()
         
-        assertTrue(viewModel.uiState is EmissionUiState.SelectPOS)
-        assertEquals(pvs, (viewModel.uiState as EmissionUiState.SelectPOS).puntosVenta)
+        // Debe auto-seleccionar y pasar a SelectType
+        assertTrue(viewModel.uiState is EmissionUiState.SelectType)
+        assertEquals(items, (viewModel.uiState as EmissionUiState.SelectType).types)
+        assertEquals(pvs[0], viewModel.selectedPOS)
     }
 
     @Test
-    fun `proceedToEmission creates factura with correct payload and rule of 0 on base currency`() = runTest {
+    fun `proceedToEmission creates electronic draft with correct payload`() = runTest {
         val pv = PuntoVentaDto(1, "Main", 1, true, true)
         val item = CfeFiscalDocumentAvailabilityItemDto(111, "e-Factura", true, null, 1, "A")
         val client = ClienteDto(932, "Test Client")
-        val moneda = CatalogoItemDto(1, "UYU", "UYU")
+        val moneda = TasaCambioSimpleDto(1, "UYU", "Peso Uruguayo", "$", 2, 1.0, null)
         val almacen = CatalogoItemDto(10, "Deposito")
-        val formapago = CatalogoItemDto(1, "Contado")
         val sugerencia = CfeFiscalIndicadorSugeridoDto(persistedValue = 16, suggestedValue = 16, isAutomatic = true, label = "IVA Minimo")
         
         whenever(repository.getPuntosVenta()).thenReturn(Result.success(listOf(pv)))
         whenever(repository.getDocumentosHabilitados(any())).thenReturn(Result.success(listOf(CfeFiscalDocumentAvailabilityGroupDto(1, listOf(item)))))
-        whenever(repository.getMonedas()).thenReturn(Result.success(listOf(moneda)))
+        whenever(repository.getTasaCambios(any())).thenReturn(Result.success(listOf(moneda)))
         whenever(repository.getAlmacenes()).thenReturn(Result.success(listOf(almacen)))
-        whenever(repository.getFormasPago()).thenReturn(Result.success(listOf(formapago)))
         whenever(repository.getListasPrecio()).thenReturn(Result.success(emptyList()))
         whenever(repository.getVencimientos()).thenReturn(Result.success(emptyList()))
         whenever(repository.getIndicadoresFacturacion(any(), any(), anyOrNull(), any())).thenReturn(Result.success(emptyList()))
@@ -71,89 +77,79 @@ class EmissionViewModelTest {
         val viewModel = EmissionViewModel(repository)
         advanceUntilIdle()
         
-        viewModel.selectPOS(pv)
-        advanceUntilIdle()
-        
         viewModel.selectFiscalType(item)
         advanceUntilIdle()
         
         viewModel.selectedCliente = client
         viewModel.selectedMoneda = moneda
         viewModel.selectedAlmacen = almacen
-        viewModel.selectedFormaPago = formapago
+        viewModel.selectedCondicionPago = CondicionPagoComercial.CREDITO
         
         val product = ProductoDto(1001, "Product", "P001", 100.0, 0.22)
         viewModel.startLineConfiguration(product)
         advanceUntilIdle()
         
-        // Ensure persistedValue from suggestion is used
         viewModel.confirmLineConfiguration(1.0, 100.0, viewModel.lineConfigurationSugerido?.persistedValue, viewModel.lineConfigurationSugerido?.suggestedValue, viewModel.lineConfigurationSugerido?.label)
         advanceUntilIdle()
         
-        whenever(repository.createFactura(any())).thenReturn(Result.success(123L))
+        whenever(repository.createFacturaElectronicDraft(any())).thenReturn(Result.success(123L))
 
         viewModel.proceedToEmission()
         advanceUntilIdle()
 
         val captor = argumentCaptor<FacturaCreateDto>()
-        verify(repository).createFactura(captor.capture())
+        verify(repository).createFacturaElectronicDraft(captor.capture())
         
         val payload = captor.firstValue
         
-        // Header assertions
+        // Assertions
         assertEquals(122.0, payload.importeTotalBase, 0.0)
-        
-        // Lines assertions
-        assertEquals(1, payload.documentoProductos.size)
-        val line = payload.documentoProductos[0]
-        assertEquals(16, line.indicadorFacturacionC4)
+        assertEquals(111, payload.cfeCodeIntent)
+        assertEquals(1, payload.puntoVentaFiscalIntentId)
+        assertEquals("A", payload.serieFiscalPreferidaIntent)
+        assertEquals(2, payload.condicionPagoComercial)
+        assertEquals(1, payload.idMoneda)
+        assertEquals(1.0, payload.tasaCambio, 0.0)
     }
 
     @Test
-    fun `no normalization rule - all values should persist`() = runTest {
+    fun `currency selection updates exchange rate`() = runTest {
         val viewModel = setupViewModelForPayload()
-        val product = ProductoDto(1001, "Product", "P001", 100.0, 0.22)
+        val usd = TasaCambioSimpleDto(2, "USD", "Dolar", "U\$S", 2, 40.0, null)
         
-        // Add lines with different C4
-        viewModel.startLineConfiguration(product)
-        advanceUntilIdle()
-        viewModel.confirmLineConfiguration(1.0, 100.0, null)
-
-        viewModel.startLineConfiguration(product)
-        advanceUntilIdle()
-        viewModel.confirmLineConfiguration(1.0, 100.0, 1)
-
-        viewModel.startLineConfiguration(product)
-        advanceUntilIdle()
-        viewModel.confirmLineConfiguration(1.0, 100.0, 16)
+        viewModel.selectedMoneda = usd
         
-        whenever(repository.createFactura(any())).thenReturn(Result.success(123L))
+        val product = ProductoDto(1001, "Product", "P001", 100.0, 0.0)
+        viewModel.startLineConfiguration(product)
+        advanceUntilIdle()
+        viewModel.confirmLineConfiguration(1.0, 40.0, null) // 40 UYU = 1 USD
+        
+        whenever(repository.createFacturaElectronicDraft(any())).thenReturn(Result.success(123L))
         viewModel.proceedToEmission()
         advanceUntilIdle()
         
         val captor = argumentCaptor<FacturaCreateDto>()
-        verify(repository).createFactura(captor.capture())
+        verify(repository).createFacturaElectronicDraft(captor.capture())
         val payload = captor.firstValue
         
-        assertNull(payload.documentoProductos[0].indicadorFacturacionC4)
-        assertEquals(1, payload.documentoProductos[1].indicadorFacturacionC4)
-        assertEquals(16, payload.documentoProductos[2].indicadorFacturacionC4)
+        assertEquals(40.0, payload.tasaCambio, 0.0)
+        assertEquals(40.0, payload.importeTotalBase, 0.0)
+        assertEquals(1.0, payload.importeTotalOriginal, 0.0) 
     }
 
     private suspend fun TestScope.setupViewModelForPayload(): EmissionViewModel {
         val pv = PuntoVentaDto(1, "Main", 1, true, true)
         val item = CfeFiscalDocumentAvailabilityItemDto(111, "e-Factura", true, null, 1, "A")
+        val monedaBase = TasaCambioSimpleDto(1, "UYU", "Peso", "$", 2, 1.0, null)
+        
         whenever(repository.getPuntosVenta()).thenReturn(Result.success(listOf(pv)))
         whenever(repository.getDocumentosHabilitados(any())).thenReturn(Result.success(listOf(CfeFiscalDocumentAvailabilityGroupDto(1, listOf(item)))))
-        whenever(repository.getMonedas()).thenReturn(Result.success(listOf(CatalogoItemDto(1, "UYU"))))
+        whenever(repository.getTasaCambios(any())).thenReturn(Result.success(listOf(monedaBase)))
         whenever(repository.getAlmacenes()).thenReturn(Result.success(listOf(CatalogoItemDto(1, "A"))))
-        whenever(repository.getFormasPago()).thenReturn(Result.success(listOf(CatalogoItemDto(1, "F"))))
         whenever(repository.getListasPrecio()).thenReturn(Result.success(emptyList()))
         whenever(repository.getVencimientos()).thenReturn(Result.success(emptyList()))
         
         val viewModel = EmissionViewModel(repository)
-        advanceUntilIdle()
-        viewModel.selectPOS(pv)
         advanceUntilIdle()
         viewModel.selectFiscalType(item)
         advanceUntilIdle()

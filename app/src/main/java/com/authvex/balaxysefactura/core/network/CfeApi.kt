@@ -13,6 +13,9 @@ interface CfeApi {
     @POST("Factura")
     suspend fun createFactura(@Body request: FacturaCreateDto): Long
 
+    @POST("Factura/electronic-draft")
+    suspend fun createFacturaElectronicDraft(@Body request: FacturaCreateDto): Long
+
     @POST("Devolucion")
     suspend fun createDevolucion(@Body request: DevolucionCreateDto): Long
 
@@ -34,7 +37,10 @@ interface CfeApi {
     suspend fun getMonedas(): List<CatalogoItemDto>
 
     @GET("Catalogo/TasaCambios")
-    suspend fun getTasaCambio(@Query("Fecha") fecha: String): Double
+    suspend fun getTasaCambios(@Query("Fecha") fecha: String): List<TasaCambioSimpleDto>
+
+    @GET("Catalogo/TasaCambios")
+    suspend fun getTasaCambioLegacy(@Query("Fecha") fecha: String): Double
 
     @GET("Catalogo/Almacens")
     suspend fun getAlmacenes(): List<CatalogoItemDto>
@@ -53,6 +59,10 @@ interface CfeApi {
 
     @GET("Catalogo/CentroCostos")
     suspend fun getCentroCostos(): List<CatalogoItemDto>
+
+    // --- Empresa ---
+    @GET("Empresa/obtener")
+    suspend fun getEmpresa(): EmpresaDto
 
     // --- Flujo Fiscal Actualizado ---
     @GET("Cfe/puntos-venta")

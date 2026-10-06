@@ -1,5 +1,6 @@
 package com.authvex.balaxysefactura.ui.screens.emission
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -7,6 +8,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -38,7 +40,7 @@ fun EmissionScreen(
                     IconButton(onClick = { 
                         if (state is EmissionUiState.SelectPOS) onBack() else viewModel.resetToStart() 
                     }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -56,7 +58,7 @@ fun EmissionScreen(
                     TypeSelectionView(state.types, onSelect = { viewModel.selectFiscalType(it) })
                 }
                 is EmissionUiState.FillForm -> {
-                    EmissionFormView(viewModel, state.type, state.catalogs)
+                    EmissionFormView(viewModel, state.type, state.pos, state.catalogs)
                 }
                 is EmissionUiState.Processing -> {
                     ProcessingState(state.message, modifier = Modifier.align(Alignment.Center))
@@ -84,7 +86,7 @@ fun POSSelectionView(pvs: List<PuntoVentaDto>, onSelect: (PuntoVentaDto) -> Unit
                 ) {
                     ListItemContent(
                         headline = pv.nombre,
-                        supporting = "Número: ${pv.numero}",
+                        supporting = "Número: ${pv.numero} ${if (pv.esPredeterminado) "(Predeterminado)" else ""}",
                         trailing = { Icon(Icons.Default.ChevronRight, null) }
                     )
                 }
@@ -120,21 +122,30 @@ fun TypeSelectionView(types: List<CfeFiscalDocumentAvailabilityItemDto>, onSelec
 }
 
 @Composable
-fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvailabilityItemDto, catalogs: CatalogData) {
+fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvailabilityItemDto, pos: PuntoVentaDto, catalogs: CatalogData) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         LazyColumn(modifier = Modifier.weight(1f)) {
             item {
-                Text("${type.name} - Serie ${type.serie}", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                // Cabecera de Contexto Fiscal (Solo Lectura)
+                FiscalContextCard(pos, type)
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 ClientSelector(viewModel)
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                DropdownSelector("Moneda", catalogs.monedas, viewModel.selectedMoneda) { viewModel.selectedMoneda = it }
+                DropdownSelector(
+                    label = "Moneda", 
+                    items = catalogs.tasaCambios.map { CatalogoItemDto(it.id, it.denominacion, it.codigo) }, 
+                    selected = viewModel.selectedMoneda?.let { CatalogoItemDto(it.id, it.denominacion, it.codigo) }
+                ) { item -> 
+                    viewModel.selectedMoneda = catalogs.tasaCambios.find { it.id == item.id }
+                }
+                
                 Spacer(modifier = Modifier.height(8.dp))
                 DropdownSelector("Almacén", catalogs.almacenes, viewModel.selectedAlmacen) { viewModel.selectedAlmacen = it }
+                
                 Spacer(modifier = Modifier.height(8.dp))
-                DropdownSelector("Forma de Pago", catalogs.formasPago, viewModel.selectedFormaPago) { viewModel.selectedFormaPago = it }
+                CondicionPagoSelector(viewModel.selectedCondicionPago) { viewModel.selectedCondicionPago = it }
                 
                 Spacer(modifier = Modifier.height(24.dp))
                 Text("Líneas del Documento", style = MaterialTheme.typography.titleMedium)
@@ -193,6 +204,62 @@ fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvaila
 
     if (viewModel.isConfiguringLine) {
         ProductSearchAndConfigDialog(viewModel)
+    }
+}
+
+@Composable
+fun FiscalContextCard(pos: PuntoVentaDto, type: CfeFiscalDocumentAvailabilityItemDto) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+        border = CardDefaults.outlinedCardBorder()
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Storefront, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Punto de Venta: ${pos.nombre}",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Description, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.secondary)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "${type.name} - Serie ${type.serie ?: "-"}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CondicionPagoSelector(selected: CondicionPagoComercial, onSelect: (CondicionPagoComercial) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val options = listOf(CondicionPagoComercial.CONTADO, CondicionPagoComercial.CREDITO)
+    
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = if (selected == CondicionPagoComercial.CONTADO) "Contado" else "Crédito",
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Condición de pago") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.menuAnchor().fillMaxWidth()
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(if (option == CondicionPagoComercial.CONTADO) "Contado" else "Crédito") }, 
+                    onClick = { onSelect(option); expanded = false }
+                )
+            }
+        }
     }
 }
 

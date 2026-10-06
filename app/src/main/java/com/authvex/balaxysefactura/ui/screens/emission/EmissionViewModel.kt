@@ -17,6 +17,7 @@ sealed class EmissionUiState {
     data class SelectType(val types: List<CfeFiscalDocumentAvailabilityItemDto>) : EmissionUiState()
     data class FillForm(
         val type: CfeFiscalDocumentAvailabilityItemDto,
+        val pos: PuntoVentaDto,
         val catalogs: CatalogData
     ) : EmissionUiState()
     data class Processing(val message: String) : EmissionUiState()
@@ -25,9 +26,8 @@ sealed class EmissionUiState {
 }
 
 data class CatalogData(
-    val monedas: List<CatalogoItemDto>,
+    val tasaCambios: List<TasaCambioSimpleDto>,
     val almacenes: List<CatalogoItemDto>,
-    val formasPago: List<CatalogoItemDto>,
     val vencimientos: List<CatalogoItemDto>,
     val listasPrecio: List<CatalogoItemDto>,
     val indicadoresC4: List<CfeFiscalIndicadorFacturacionDto>
@@ -48,15 +48,15 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
     var uiState by mutableStateOf<EmissionUiState>(EmissionUiState.LoadingInitial)
         private set
 
-    // Selection State
+    // Fiscal Route State
     var selectedPOS by mutableStateOf<PuntoVentaDto?>(null)
     var selectedFiscalType by mutableStateOf<CfeFiscalDocumentAvailabilityItemDto?>(null)
 
     // Form State (Common)
     var selectedCliente by mutableStateOf<ClienteDto?>(null)
-    var selectedMoneda by mutableStateOf<CatalogoItemDto?>(null)
+    var selectedMoneda by mutableStateOf<TasaCambioSimpleDto?>(null)
     var selectedAlmacen by mutableStateOf<CatalogoItemDto?>(null)
-    var selectedFormaPago by mutableStateOf<CatalogoItemDto?>(null)
+    var selectedCondicionPago by mutableStateOf(CondicionPagoComercial.CONTADO)
     var selectedVencimiento by mutableStateOf<CatalogoItemDto?>(null)
     var selectedListaPrecio by mutableStateOf<CatalogoItemDto?>(null)
     val lineas = mutableStateListOf<LineaForm>()
@@ -88,13 +88,19 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
         viewModelScope.launch {
             uiState = EmissionUiState.LoadingInitial
             repository.getPuntosVenta().onSuccess { pvs ->
-                uiState = EmissionUiState.SelectPOS(pvs)
+                val defaultPos = pvs.find { it.esPredeterminado } ?: pvs.firstOrNull()
+                if (defaultPos != null) {
+                    selectPOS(defaultPos)
+                } else {
+                    uiState = EmissionUiState.SelectPOS(pvs)
+                }
             }.onFailure { handleFailure(it) }
         }
     }
 
     fun selectPOS(pv: PuntoVentaDto) {
         selectedPOS = pv
+        selectedFiscalType = null // Invalida selección CFE al cambiar POS
         viewModelScope.launch {
             uiState = EmissionUiState.Processing("Consultando documentos habilitados...")
             repository.getDocumentosHabilitados(pv.id).onSuccess { groups ->
@@ -106,22 +112,18 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
 
     fun selectFiscalType(item: CfeFiscalDocumentAvailabilityItemDto) {
         selectedFiscalType = item
-        if (cachedCatalogs != null) {
-            uiState = EmissionUiState.FillForm(item, cachedCatalogs!!)
-        } else {
-            loadCatalogsAndGoToForm(item)
-        }
+        loadCatalogsAndGoToForm(item)
     }
 
     private fun loadCatalogsAndGoToForm(item: CfeFiscalDocumentAvailabilityItemDto) {
+        val currentPos = selectedPOS ?: return
         viewModelScope.launch {
             uiState = EmissionUiState.Processing("Cargando catálogos...")
             try {
                 val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
                 val data = CatalogData(
-                    monedas = repository.getMonedas().getOrThrow(),
+                    tasaCambios = repository.getTasaCambios(today).getOrThrow(),
                     almacenes = repository.getAlmacenes().getOrThrow(),
-                    formasPago = repository.getFormasPago().getOrThrow(),
                     vencimientos = repository.getVencimientos().getOrNull() ?: emptyList(),
                     listasPrecio = repository.getListasPrecio().getOrNull() ?: emptyList(),
                     indicadoresC4 = repository.getIndicadoresFacturacion(
@@ -130,11 +132,12 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
                 )
                 cachedCatalogs = data
                 
-                if (selectedMoneda == null) selectedMoneda = data.monedas.find { it.codigo == "UYU" } ?: data.monedas.firstOrNull()
+                if (selectedMoneda == null) {
+                    selectedMoneda = data.tasaCambios.find { it.codigo == "UYU" } ?: data.tasaCambios.firstOrNull()
+                }
                 if (selectedAlmacen == null) selectedAlmacen = data.almacenes.firstOrNull()
-                if (selectedFormaPago == null) selectedFormaPago = data.formasPago.firstOrNull()
 
-                uiState = EmissionUiState.FillForm(item, data)
+                uiState = EmissionUiState.FillForm(item, currentPos, data)
             } catch (e: Exception) {
                 handleFailure(e)
             }
@@ -218,9 +221,14 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
     }
 
     fun proceedToEmission() {
-        val type = selectedFiscalType ?: return
-        val pos = selectedPOS ?: return
+        val type = selectedFiscalType
+        val pos = selectedPOS
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+        if (type == null || pos == null || type.serie.isNullOrBlank()) {
+            uiState = EmissionUiState.Error(AppError.Validation("Error de ruta fiscal: Serie o Punto de Venta no válidos para el borrador electrónico."))
+            return
+        }
         
         viewModelScope.launch {
             // 1. Precheck CAE
@@ -234,9 +242,9 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             // 2. Create ERP
             uiState = EmissionUiState.Processing("Creando documento ERP...")
             val result = if (isVenta(type.cfeCode)) {
-                createFacturaERP(today)
+                createFacturaERP(today, type, pos)
             } else {
-                createDevolucionERP(type.cfeCode, today)
+                createDevolucionERP(type.cfeCode, today, type, pos)
             }
 
             result.onSuccess { documentoId ->
@@ -245,8 +253,8 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
         }
     }
 
-    private suspend fun createFacturaERP(today: String): Result<Long> {
-        val tasaCambio = 1.0 
+    private suspend fun createFacturaERP(today: String, type: CfeFiscalDocumentAvailabilityItemDto, pos: PuntoVentaDto): Result<Long> {
+        val tasaCambio = selectedMoneda?.tasaPromedio ?: 1.0
         val isBaseCurrency = (tasaCambio == 1.0)
         
         val mappedLineas = mapLineas(isBaseCurrency)
@@ -262,25 +270,28 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             importeBase = importeBase,
             iva = iva,
             importeTotalBase = importeBase + iva,
-            importeOriginal = if (isBaseCurrency) 0.0 else importeBase,
-            ivaOriginal = if (isBaseCurrency) 0.0 else iva,
-            importeTotalOriginal = if (isBaseCurrency) 0.0 else (importeBase + iva),
+            importeOriginal = if (isBaseCurrency) 0.0 else (importeBase / tasaCambio),
+            ivaOriginal = if (isBaseCurrency) 0.0 else (iva / tasaCambio),
+            importeTotalOriginal = if (isBaseCurrency) 0.0 else ((importeBase + iva) / tasaCambio),
             idAlmacen = selectedAlmacen?.id ?: 0,
             idCliente = selectedCliente?.id ?: 0,
             documentoProductos = mappedLineas,
             nota = notas,
             esElectronico = true,
-            idFormaPago = selectedFormaPago?.id,
             idVencimiento = selectedVencimiento?.id,
-            idListaPrecio = selectedListaPrecio?.id
+            idListaPrecio = selectedListaPrecio?.id,
+            cfeCodeIntent = type.cfeCode,
+            puntoVentaFiscalIntentId = pos.id,
+            serieFiscalPreferidaIntent = type.serie,
+            condicionPagoComercial = selectedCondicionPago.apiValue
         )
-        return repository.createFactura(request)
+        return repository.createFacturaElectronicDraft(request)
     }
 
-    private suspend fun createDevolucionERP(cfeCode: Int, today: String): Result<Long> {
+    private suspend fun createDevolucionERP(cfeCode: Int, today: String, type: CfeFiscalDocumentAvailabilityItemDto, pos: PuntoVentaDto): Result<Long> {
         if (idDocumentoOrigen == null) return Result.failure(Exception("Debe seleccionar un documento de origen"))
         
-        val tasaCambio = 1.0
+        val tasaCambio = selectedMoneda?.tasaPromedio ?: 1.0
         val isBaseCurrency = (tasaCambio == 1.0)
         
         val mappedLineas = mapLineas(isBaseCurrency)
@@ -301,9 +312,9 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             importeBase = importeBase,
             iva = iva,
             importeTotalBase = importeBase + iva,
-            importeOriginal = if (isBaseCurrency) 0.0 else importeBase,
-            ivaOriginal = if (isBaseCurrency) 0.0 else iva,
-            importeTotalOriginal = if (isBaseCurrency) 0.0 else (importeBase + iva),
+            importeOriginal = if (isBaseCurrency) 0.0 else (importeBase / tasaCambio),
+            ivaOriginal = if (isBaseCurrency) 0.0 else (iva / tasaCambio),
+            importeTotalOriginal = if (isBaseCurrency) 0.0 else ((importeBase + iva) / tasaCambio),
             idAlmacen = selectedAlmacen?.id ?: 0,
             idCliente = selectedCliente?.id ?: 0,
             documentoProductos = mappedLineas,
@@ -312,14 +323,18 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             tipoDevolucion = "Factura",
             naturalezaNota = naturaleza,
             idDocumentoOrigen = idDocumentoOrigen!!,
-            idFormaPago = selectedFormaPago?.id,
             idVencimiento = selectedVencimiento?.id,
-            idListaPrecio = selectedListaPrecio?.id
+            idListaPrecio = selectedListaPrecio?.id,
+            cfeCodeIntent = type.cfeCode,
+            puntoVentaFiscalIntentId = pos.id,
+            serieFiscalPreferidaIntent = type.serie,
+            condicionPagoComercial = selectedCondicionPago.apiValue
         )
         return repository.createDevolucion(request)
     }
 
     private fun mapLineas(isBaseCurrency: Boolean): List<FacturaLineaRequest> {
+        val tasaCambio = selectedMoneda?.tasaPromedio ?: 1.0
         return lineas.map { 
             val price = it.precioUnitario
             val qty = it.cantidad
@@ -336,14 +351,14 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
                 importeBase = importeBase,
                 iva = iva,
                 descuento = it.descuento,
-                ivaOriginal = if (isBaseCurrency) 0.0 else iva,
-                descuentoOriginal = if (isBaseCurrency) 0.0 else it.descuento,
+                ivaOriginal = if (isBaseCurrency) 0.0 else (iva / tasaCambio),
+                descuentoOriginal = if (isBaseCurrency) 0.0 else (it.descuento / tasaCambio),
                 precioBaseConIva = price * (1 + taxRate),
                 importeBaseConIva = totalConIva,
-                precioOriginal = if (isBaseCurrency) 0.0 else price,
-                importeOriginal = if (isBaseCurrency) 0.0 else importeBase,
-                precioOriginalConIva = if (isBaseCurrency) 0.0 else (price * (1 + taxRate)),
-                importeOriginalConIva = if (isBaseCurrency) 0.0 else totalConIva,
+                precioOriginal = if (isBaseCurrency) 0.0 else (price / tasaCambio),
+                importeOriginal = if (isBaseCurrency) 0.0 else (importeBase / tasaCambio),
+                precioOriginalConIva = if (isBaseCurrency) 0.0 else ((price * (1 + taxRate)) / tasaCambio),
+                importeOriginalConIva = if (isBaseCurrency) 0.0 else (totalConIva / tasaCambio),
                 indicadorFacturacionC4 = it.indicadorFacturacionC4
             )
         }
@@ -405,6 +420,8 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
         idDocumentoOrigen = null
         clientSearchResults = emptyList()
         productSearchResults = emptyList()
+        selectedMoneda = null
+        selectedCondicionPago = CondicionPagoComercial.CONTADO
         cancelLineConfiguration()
     }
 }

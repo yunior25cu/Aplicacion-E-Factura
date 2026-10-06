@@ -21,6 +21,7 @@ class CfeRepositoryTest {
         
         override suspend fun getDocument(documentoId: Int): CfeDetailDto = throw NotImplementedError()
         override suspend fun createFactura(request: FacturaCreateDto): Long = shouldThrow?.let { throw it } ?: 1L
+        override suspend fun createFacturaElectronicDraft(request: FacturaCreateDto): Long = shouldThrow?.let { throw it } ?: 2L
         override suspend fun createDevolucion(request: DevolucionCreateDto): Long = shouldThrow?.let { throw it } ?: 1L
         override suspend fun getFactura(documentoId: Long): FacturaResponse = shouldThrow?.let { throw it } ?: FacturaResponse(documentoId)
         override suspend fun getDevolucion(documentoId: Long): FacturaResponse = shouldThrow?.let { throw it } ?: FacturaResponse(documentoId)
@@ -33,8 +34,11 @@ class CfeRepositoryTest {
             
         override suspend fun getMonedas(): List<CatalogoItemDto> = 
             shouldThrow?.let { throw it } ?: emptyList()
+
+        override suspend fun getTasaCambios(fecha: String): List<TasaCambioSimpleDto> = 
+            shouldThrow?.let { throw it } ?: emptyList()
             
-        override suspend fun getTasaCambio(fecha: String): Double = 
+        override suspend fun getTasaCambioLegacy(fecha: String): Double = 
             shouldThrow?.let { throw it } ?: 1.0
             
         override suspend fun getAlmacenes(): List<CatalogoItemDto> = 
@@ -54,6 +58,8 @@ class CfeRepositoryTest {
             
         override suspend fun getCentroCostos(): List<CatalogoItemDto> = 
             shouldThrow?.let { throw it } ?: emptyList()
+
+        override suspend fun getEmpresa(): EmpresaDto = shouldThrow?.let { throw it } ?: EmpresaDto(1)
 
         override suspend fun getPuntosVenta(): List<PuntoVentaDto> = shouldThrow?.let { throw it } ?: emptyList()
         override suspend fun getDocumentosHabilitados(puntoVentaId: Int): List<CfeFiscalDocumentAvailabilityGroupDto> = shouldThrow?.let { throw it } ?: emptyList()

@@ -11,8 +11,6 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.*
-import java.text.SimpleDateFormat
-import java.util.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class EmissionFiscalLogicTest {
@@ -41,11 +39,12 @@ class EmissionFiscalLogicTest {
     private suspend fun TestScope.setupViewModel(): EmissionViewModel {
         val pv = PuntoVentaDto(1, "Main", 1, true, true)
         val item = CfeFiscalDocumentAvailabilityItemDto(111, "e-Factura", true, null, 1, "A")
+        val moneda = TasaCambioSimpleDto(1, "UYU", "Peso", "$", 2, 1.0, null)
+        
         whenever(repository.getPuntosVenta()).thenReturn(Result.success(listOf(pv)))
         whenever(repository.getDocumentosHabilitados(any())).thenReturn(Result.success(listOf(CfeFiscalDocumentAvailabilityGroupDto(1, listOf(item)))))
-        whenever(repository.getMonedas()).thenReturn(Result.success(listOf(CatalogoItemDto(1, "UYU"))))
+        whenever(repository.getTasaCambios(any())).thenReturn(Result.success(listOf(moneda)))
         whenever(repository.getAlmacenes()).thenReturn(Result.success(listOf(CatalogoItemDto(1, "A"))))
-        whenever(repository.getFormasPago()).thenReturn(Result.success(listOf(CatalogoItemDto(1, "F"))))
         whenever(repository.getListasPrecio()).thenReturn(Result.success(emptyList()))
         whenever(repository.getVencimientos()).thenReturn(Result.success(emptyList()))
         
@@ -98,7 +97,7 @@ class EmissionFiscalLogicTest {
     fun `proceedToEmission fails if validateCfe is invalid`() = runTest {
         val viewModel = setupViewModel()
         
-        whenever(repository.createFactura(any())).thenReturn(Result.success(123L))
+        whenever(repository.createFacturaElectronicDraft(any())).thenReturn(Result.success(123L))
         whenever(repository.validateCfe(any(), any(), any(), any())).thenReturn(Result.success(CfeValidateResponseDto(false, listOf("Error 1"))))
         
         val product = ProductoDto(1001, "Product", "P001", 100.0, 0.22)
@@ -119,7 +118,7 @@ class EmissionFiscalLogicTest {
     fun `proceedToEmission polls with statusUrl`() = runTest {
         val viewModel = setupViewModel()
         
-        whenever(repository.createFactura(any())).thenReturn(Result.success(123L))
+        whenever(repository.createFacturaElectronicDraft(any())).thenReturn(Result.success(123L))
         
         val product = ProductoDto(1001, "Product", "P001", 100.0, 0.22)
         viewModel.startLineConfiguration(product)
