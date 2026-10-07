@@ -28,6 +28,20 @@ class LoginViewModel(
 
     var email by mutableStateOf("")
     var password by mutableStateOf("")
+    var rememberMe by mutableStateOf(true)
+
+    init {
+        viewModelScope.launch {
+            val isRemembered = authPreferences.getRememberMeSync()
+            rememberMe = isRemembered
+            if (isRemembered) {
+                val savedEmail = authPreferences.getSavedEmailSync()
+                if (!savedEmail.isNullOrBlank()) {
+                    email = savedEmail
+                }
+            }
+        }
+    }
 
     fun onLoginClick() {
         if (email.isBlank() || password.isBlank()) {
@@ -46,6 +60,7 @@ class LoginViewModel(
                     empresaId = response.loginInfo?.empresaId ?: 0,
                     usuarioId = response.loginInfo?.usuarioId ?: 0
                 )
+                authPreferences.saveRememberMeData(rememberMe, email)
                 uiState = LoginUiState.Success
             } catch (e: Exception) {
                 val appError = ErrorMapper.fromThrowable(e)

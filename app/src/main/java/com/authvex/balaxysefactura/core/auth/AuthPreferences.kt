@@ -1,7 +1,7 @@
 package com.authvex.balaxysefactura.core.auth
 
 import android.content.Context
-import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -26,6 +26,8 @@ class AuthPreferences(private val context: Context) {
         private val EXPIRES_AT_KEY = stringPreferencesKey("expires_at")
         private val EMPRESA_ID_KEY = stringPreferencesKey("empresa_id")
         private val USUARIO_ID_KEY = stringPreferencesKey("usuario_id")
+        private val REMEMBER_ME_KEY = booleanPreferencesKey("remember_me")
+        private val SAVED_EMAIL_KEY = stringPreferencesKey("saved_email")
     }
 
     val session: Flow<AuthSession> = context.dataStore.data.map { preferences ->
@@ -60,11 +62,38 @@ class AuthPreferences(private val context: Context) {
         }
     }
 
+    suspend fun saveRememberMeData(rememberMe: Boolean, email: String) {
+        context.dataStore.edit { preferences ->
+            preferences[REMEMBER_ME_KEY] = rememberMe
+            if (rememberMe) {
+                preferences[SAVED_EMAIL_KEY] = email
+            } else {
+                preferences.remove(SAVED_EMAIL_KEY)
+            }
+        }
+    }
+
+    suspend fun getSavedEmailSync(): String? = context.dataStore.data.map { it[SAVED_EMAIL_KEY] }.first()
+    suspend fun getRememberMeSync(): Boolean = context.dataStore.data.map { it[REMEMBER_ME_KEY] ?: true }.first()
+
+    suspend fun clearRememberMeData() {
+        context.dataStore.edit { preferences ->
+            preferences[REMEMBER_ME_KEY] = false
+            preferences.remove(SAVED_EMAIL_KEY)
+        }
+    }
+
     suspend fun clearAuthData() {
         context.dataStore.edit { preferences ->
+            val rememberMe = preferences[REMEMBER_ME_KEY] ?: true
+            val savedEmail = preferences[SAVED_EMAIL_KEY]
+            
             preferences.clear()
+            
+            if (rememberMe && !savedEmail.isNullOrBlank()) {
+                preferences[REMEMBER_ME_KEY] = true
+                preferences[SAVED_EMAIL_KEY] = savedEmail
+            }
         }
     }
 }
-
-typealias MutablePreferences = androidx.datastore.preferences.core.MutablePreferences
