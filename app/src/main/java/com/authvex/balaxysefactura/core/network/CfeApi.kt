@@ -14,7 +14,7 @@ interface CfeApi {
     suspend fun createFactura(@Body request: FacturaCreateDto): Long
 
     @POST("Factura/electronic-draft")
-    suspend fun createFacturaElectronicDraft(@Body request: FacturaCreateDto): Long
+    suspend fun createFacturaElectronicDraft(@Body request: FacturaCreateDto): FacturaResponse
 
     @POST("Devolucion")
     suspend fun createDevolucion(@Body request: DevolucionCreateDto): Long

@@ -54,7 +54,7 @@ class EmissionFiscalLogicTest {
         advanceUntilIdle()
         viewModel.selectFiscalType(item)
         advanceUntilIdle()
-        viewModel.selectedCliente = ClienteDto(1, "C")
+        viewModel.selectedCliente = ClienteDto(1, "C", tipoDocumentoIdentificacion = FiscalDocumentTypes.RUC)
         
         return viewModel
     }

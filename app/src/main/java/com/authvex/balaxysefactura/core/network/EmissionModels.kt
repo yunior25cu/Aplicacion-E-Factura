@@ -1,7 +1,10 @@
 package com.authvex.balaxysefactura.core.network
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class ClienteDto(
@@ -9,7 +12,9 @@ data class ClienteDto(
     @SerialName("denominacion")
     val nombre: String,
     val ruc: String? = null,
-    val direccion: String? = null
+    val direccion: String? = null,
+    val tipoDocumentoIdentificacion: Int? = null,
+    val esEmpresa: Boolean? = null
 )
 
 @Serializable
@@ -76,6 +81,8 @@ data class FacturaCreateDto(
     val documentoProductos: List<FacturaLineaRequest>,
     val numeroReferencia: String? = null,
     val nota: String? = null,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     val esElectronico: Boolean = true,
     val cobrar: Boolean = false,
     val idCuentaBanco: Int? = null,
@@ -131,6 +138,8 @@ data class DevolucionCreateDto(
     val documentoProductos: List<FacturaLineaRequest>,
     val numeroReferencia: String? = null,
     val nota: String? = null,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     val esElectronico: Boolean = true,
     val cobrar: Boolean = false,
     val idCuentaBanco: Int? = null,
@@ -155,12 +164,15 @@ data class DevolucionCreateDto(
 
 @Serializable
 data class FacturaResponse(
-    val documentoId: Long,
-    val numero: String? = null,
+    val id: Long? = null,
+    val documentoId: Long? = null,
+    val numero: JsonElement? = null,
     val total: Double? = null,
     val subtotal: Double? = null,
     val iva: Double? = null
-)
+) {
+    fun getEffectiveId(): Long = id ?: documentoId ?: 0L
+}
 
 @Serializable
 data class PuntoVentaDto(

@@ -149,8 +149,13 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
         searchJob = viewModelScope.launch {
             delay(500)
             isSearching = true
-            repository.getClientes(query).onSuccess {
-                clientSearchResults = it
+            repository.getClientes(query).onSuccess { clients ->
+                val cfeCode = selectedFiscalType?.cfeCode
+                clientSearchResults = if (cfeCode == 111) {
+                    clients.filter { isClientCompatibleWithCfe(it.tipoDocumentoIdentificacion, 111) }
+                } else {
+                    clients
+                }
             }
             isSearching = false
         }
@@ -223,10 +228,16 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
     fun proceedToEmission() {
         val type = selectedFiscalType
         val pos = selectedPOS
+        val cliente = selectedCliente
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
         if (type == null || pos == null || type.serie.isNullOrBlank()) {
             uiState = EmissionUiState.Error(AppError.Validation("Error de ruta fiscal: Serie o Punto de Venta no válidos para el borrador electrónico."))
+            return
+        }
+
+        if (type.cfeCode == 111 && !isClientCompatibleWithCfe(cliente?.tipoDocumentoIdentificacion, 111)) {
+            uiState = EmissionUiState.Error(AppError.Validation("e-Factura requiere un cliente con RUT/RUC."))
             return
         }
         

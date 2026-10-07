@@ -34,8 +34,8 @@ open class CfeRepository(private val api: CfeApi) {
 
     open suspend fun createFacturaElectronicDraft(request: FacturaCreateDto): Result<Long> {
         return try {
-            val documentoId = api.createFacturaElectronicDraft(request)
-            Result.success(documentoId)
+            val response = api.createFacturaElectronicDraft(request)
+            Result.success(response.getEffectiveId())
         } catch (e: Exception) {
             Result.failure(ErrorMapper.fromThrowable(e))
         }

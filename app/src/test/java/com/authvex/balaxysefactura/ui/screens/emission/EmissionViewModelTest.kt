@@ -60,7 +60,7 @@ class EmissionViewModelTest {
     fun `proceedToEmission creates electronic draft with correct payload`() = runTest {
         val pv = PuntoVentaDto(1, "Main", 1, true, true)
         val item = CfeFiscalDocumentAvailabilityItemDto(111, "e-Factura", true, null, 1, "A")
-        val client = ClienteDto(932, "Test Client")
+        val client = ClienteDto(932, "Test Client", tipoDocumentoIdentificacion = FiscalDocumentTypes.RUC)
         val moneda = TasaCambioSimpleDto(1, "UYU", "Peso Uruguayo", "$", 2, 1.0, null)
         val almacen = CatalogoItemDto(10, "Deposito")
         val sugerencia = CfeFiscalIndicadorSugeridoDto(persistedValue = 16, suggestedValue = 16, isAutomatic = true, label = "IVA Minimo")
@@ -153,8 +153,74 @@ class EmissionViewModelTest {
         advanceUntilIdle()
         viewModel.selectFiscalType(item)
         advanceUntilIdle()
-        viewModel.selectedCliente = ClienteDto(1, "C")
+        viewModel.selectedCliente = ClienteDto(1, "C", tipoDocumentoIdentificacion = FiscalDocumentTypes.RUC)
         
         return viewModel
+    }
+
+    @Test
+    fun `e-Factura 111 with CI client blocks draft creation and displays UX error`() = runTest {
+        val pv = PuntoVentaDto(1, "Main", 1, true, true)
+        val item = CfeFiscalDocumentAvailabilityItemDto(111, "e-Factura", true, null, 1, "A")
+        val ciClient = ClienteDto(102, "CI Client", tipoDocumentoIdentificacion = FiscalDocumentTypes.CI)
+
+        whenever(repository.getPuntosVenta()).thenReturn(Result.success(listOf(pv)))
+        whenever(repository.getDocumentosHabilitados(any())).thenReturn(Result.success(listOf(CfeFiscalDocumentAvailabilityGroupDto(1, listOf(item)))))
+
+        val viewModel = EmissionViewModel(repository)
+        advanceUntilIdle()
+        viewModel.selectFiscalType(item)
+        advanceUntilIdle()
+
+        viewModel.selectedCliente = ciClient
+
+        viewModel.proceedToEmission()
+        advanceUntilIdle()
+
+        // Verify zero backend calls
+        verify(repository, never()).createFacturaElectronicDraft(any())
+        verify(repository, never()).validateCfe(any(), any(), any(), any())
+        verify(repository, never()).emitCfe(any(), any())
+
+        // Verify error displayed
+        assertTrue(viewModel.uiState is EmissionUiState.Error)
+        val errorState = viewModel.uiState as EmissionUiState.Error
+        assertEquals("e-Factura requiere un cliente con RUT/RUC.", errorState.error.getDisplayMessage())
+    }
+
+    @Test
+    fun `e-Factura 111 with RUC client allows flow to proceed`() = runTest {
+        val viewModel = setupViewModelForPayload()
+        whenever(repository.createFacturaElectronicDraft(any())).thenReturn(Result.success(123L))
+
+        viewModel.proceedToEmission()
+        advanceUntilIdle()
+
+        verify(repository, times(1)).createFacturaElectronicDraft(any())
+    }
+
+    @Test
+    fun `e-Ticket 101 with RUC client allows flow to proceed`() = runTest {
+        val pv = PuntoVentaDto(1, "Main", 1, true, true)
+        val item = CfeFiscalDocumentAvailabilityItemDto(101, "e-Ticket", true, null, 1, "A")
+        val rucClient = ClienteDto(101, "RUC Client", tipoDocumentoIdentificacion = FiscalDocumentTypes.RUC)
+
+        whenever(repository.getPuntosVenta()).thenReturn(Result.success(listOf(pv)))
+        whenever(repository.getDocumentosHabilitados(any())).thenReturn(Result.success(listOf(CfeFiscalDocumentAvailabilityGroupDto(1, listOf(item)))))
+        whenever(repository.getTasaCambios(any())).thenReturn(Result.success(listOf(TasaCambioSimpleDto(1, "UYU", "Peso", "$", 2, 1.0, null))))
+        whenever(repository.getAlmacenes()).thenReturn(Result.success(listOf(CatalogoItemDto(1, "A"))))
+        whenever(repository.createFacturaElectronicDraft(any())).thenReturn(Result.success(123L))
+
+        val viewModel = EmissionViewModel(repository)
+        advanceUntilIdle()
+        viewModel.selectFiscalType(item)
+        advanceUntilIdle()
+
+        viewModel.selectedCliente = rucClient
+
+        viewModel.proceedToEmission()
+        advanceUntilIdle()
+
+        verify(repository, times(1)).createFacturaElectronicDraft(any())
     }
 }
