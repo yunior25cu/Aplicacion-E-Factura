@@ -7,6 +7,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -17,9 +18,11 @@ class CfeListViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
 
     private class FakeCfeRepository(
-        private val result: Result<CfeSearchResponse>
+        private val pageProvider: (query: String?, page: Int) -> Result<CfeSearchResponse>
     ) : CfeRepository(mockApi()) {
-        override suspend fun searchDocuments(query: String?, page: Int): Result<CfeSearchResponse> = result
+        override suspend fun searchDocuments(query: String?, page: Int): Result<CfeSearchResponse> {
+            return pageProvider(query, page)
+        }
     }
 
     @Before
@@ -33,12 +36,12 @@ class CfeListViewModelTest {
     }
 
     @Test
-    fun `initial state is Loading and then Success when repository returns items`() = runTest {
+    fun `initial state is LoadingInitial and then Success when repository returns items`() = runTest {
         val docs = listOf(CfeSummaryDto(1, "A", 1L, 101, "Test", "2023-01-01", 100.0, "$", 6))
         val response = CfeSearchResponse(totalRecords = 1, offset = 0, limit = 20, items = docs)
-        val viewModel = CfeListViewModel(FakeCfeRepository(Result.success(response)))
+        val viewModel = CfeListViewModel(FakeCfeRepository { _, _ -> Result.success(response) })
         
-        assertEquals(CfeListUiState.Loading, viewModel.uiState)
+        assertEquals(CfeListUiState.LoadingInitial, viewModel.uiState)
         
         advanceUntilIdle()
         
@@ -46,12 +49,13 @@ class CfeListViewModelTest {
         val successState = viewModel.uiState as CfeListUiState.Success
         assertEquals(docs, successState.documents)
         assertEquals(1, successState.totalRecords)
+        assertFalse(successState.canLoadMore)
     }
 
     @Test
     fun `state is Empty when repository returns empty list`() = runTest {
         val response = CfeSearchResponse(totalRecords = 0, offset = 0, limit = 20, items = emptyList())
-        val viewModel = CfeListViewModel(FakeCfeRepository(Result.success(response)))
+        val viewModel = CfeListViewModel(FakeCfeRepository { _, _ -> Result.success(response) })
         
         advanceUntilIdle()
         
@@ -61,12 +65,69 @@ class CfeListViewModelTest {
     @Test
     fun `state is Error when repository returns failure`() = runTest {
         val error = AppError.Network
-        val viewModel = CfeListViewModel(FakeCfeRepository(Result.failure(error)))
+        val viewModel = CfeListViewModel(FakeCfeRepository { _, _ -> Result.failure(error) })
         
         advanceUntilIdle()
         
         assertTrue(viewModel.uiState is CfeListUiState.Error)
         assertEquals(error, (viewModel.uiState as CfeListUiState.Error).error)
+    }
+
+    @Test
+    fun `loadNextPage appends new items and deduplicates by documentoId`() = runTest {
+        val page1Docs = (1..20).map { id -> CfeSummaryDto(id, "A", id.toLong(), 101, "Receptor $id", "2026-10-07", 100.0, "$", 4) }
+        // Page 2 contains items 21..25 plus duplicate item 20
+        val page2Docs = (20..25).map { id -> CfeSummaryDto(id, "A", id.toLong(), 101, "Receptor $id", "2026-10-07", 100.0, "$", 4) }
+
+        val repo = FakeCfeRepository { _, page ->
+            if (page == 1) {
+                Result.success(CfeSearchResponse(totalRecords = 25, offset = 0, limit = 20, items = page1Docs))
+            } else {
+                Result.success(CfeSearchResponse(totalRecords = 25, offset = 20, limit = 20, items = page2Docs))
+            }
+        }
+
+        val viewModel = CfeListViewModel(repo)
+        advanceUntilIdle()
+
+        var state = viewModel.uiState as CfeListUiState.Success
+        assertEquals(20, state.documents.size)
+        assertTrue(state.canLoadMore)
+
+        viewModel.loadNextPage()
+        advanceUntilIdle()
+
+        state = viewModel.uiState as CfeListUiState.Success
+        // 20 items from page 1 + 5 new unique items from page 2 (item 20 deduplicated) = 25
+        assertEquals(25, state.documents.size)
+        assertFalse(state.canLoadMore)
+    }
+
+    @Test
+    fun `search query change resets to page 1 and loads filtered items`() = runTest {
+        var capturedQuery: String? = null
+        var capturedPage: Int? = null
+
+        val repo = FakeCfeRepository { query, page ->
+            capturedQuery = query
+            capturedPage = page
+            Result.success(CfeSearchResponse(totalRecords = 5, offset = 0, limit = 20, items = listOf(
+                CfeSummaryDto(10, "A", 10L, 111, "Query Test", "2026-10-07", 500.0, "$", 4)
+            )))
+        }
+
+        val viewModel = CfeListViewModel(repo)
+        advanceUntilIdle()
+
+        viewModel.onSearchQueryChanged("10084")
+        advanceUntilIdle()
+
+        assertEquals("10084", capturedQuery)
+        assertEquals(1, capturedPage)
+
+        val state = viewModel.uiState as CfeListUiState.Success
+        assertEquals(1, state.documents.size)
+        assertEquals("Query Test", state.documents[0].receptor)
     }
 }
 

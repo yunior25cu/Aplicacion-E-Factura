@@ -5,13 +5,19 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,6 +33,25 @@ fun CfeListScreen(
     onNavigateToDetail: (Long) -> Unit
 ) {
     val uiState = viewModel.uiState
+    val listState = rememberLazyListState()
+
+    // Detectar scroll cercano al final para cargar la siguiente página
+    val shouldLoadMore by remember(listState, uiState) {
+        derivedStateOf {
+            val successState = uiState as? CfeListUiState.Success ?: return@derivedStateOf false
+            if (!successState.canLoadMore || successState.isFetchingNextPage) return@derivedStateOf false
+            val layoutInfo = listState.layoutInfo
+            val totalItems = layoutInfo.totalItemsCount
+            val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            lastVisibleIndex >= totalItems - 3
+        }
+    }
+
+    LaunchedEffect(shouldLoadMore) {
+        if (shouldLoadMore) {
+            viewModel.loadNextPage()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -38,7 +63,7 @@ fun CfeListScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.loadDocuments() }) {
+                    IconButton(onClick = { viewModel.loadDocuments(isRefresh = true) }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
                 },
@@ -49,52 +74,130 @@ fun CfeListScreen(
             )
         }
     ) { innerPadding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(innerPadding)
         ) {
-            when (uiState) {
-                is CfeListUiState.Loading -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                }
-                is CfeListUiState.Empty -> {
-                    EmptyState(modifier = Modifier.align(Alignment.Center))
-                }
-                is CfeListUiState.Error -> {
-                    ErrorState(
-                        message = uiState.error.getDisplayMessage(),
-                        onRetry = { viewModel.loadDocuments() },
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
-                is CfeListUiState.Success -> {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "${uiState.documents.size} documentos encontrados",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                            )
-                            IconButton(onClick = {}) {
-                                Icon(Icons.Default.FilterList, contentDescription = "Filter", tint = MaterialTheme.colorScheme.primary)
-                            }
+            // Barra de Búsqueda y Filtro
+            OutlinedTextField(
+                value = viewModel.searchQuery,
+                onValueChange = { viewModel.onSearchQueryChanged(it) },
+                label = { Text("Buscar por serie, número o receptor...") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (viewModel.searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { viewModel.onSearchQueryChanged("") }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Limpiar")
                         }
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            )
 
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(bottom = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(uiState.documents) { doc ->
-                                CfeItemCard(doc = doc, onClick = { onNavigateToDetail(doc.documentoId.toLong()) })
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f)
+            ) {
+                when (uiState) {
+                    is CfeListUiState.LoadingInitial -> {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    }
+                    is CfeListUiState.Empty -> {
+                        EmptyState(
+                            query = viewModel.searchQuery,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
+                    is CfeListUiState.Error -> {
+                        ErrorState(
+                            message = uiState.error.getDisplayMessage(),
+                            onRetry = { viewModel.loadDocuments(isRefresh = true) },
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
+                    is CfeListUiState.Success -> {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Mostrando ${uiState.documents.size} de ${uiState.totalRecords} comprobantes",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
+                            }
+
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(bottom = 16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(
+                                    items = uiState.documents,
+                                    key = { it.documentoId }
+                                ) { doc ->
+                                    CfeItemCard(
+                                        doc = doc,
+                                        onClick = { onNavigateToDetail(doc.documentoId.toLong()) }
+                                    )
+                                }
+
+                                // Indicador o error de carga de siguiente página
+                                if (uiState.isFetchingNextPage) {
+                                    item {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(16.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(20.dp),
+                                                    strokeWidth = 2.dp
+                                                )
+                                                Spacer(modifier = Modifier.width(12.dp))
+                                                Text(
+                                                    "Cargando más comprobantes...",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (uiState.nextPageError != null) {
+                                    item {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(16.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = "Error al cargar más: ${uiState.nextPageError.getDisplayMessage()}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            OutlinedButton(onClick = { viewModel.retryNextPage() }) {
+                                                Text("Reintentar")
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -238,14 +341,14 @@ fun StatusChip(estado: Int?) {
 }
 
 @Composable
-fun EmptyState(modifier: Modifier = Modifier) {
+fun EmptyState(query: String = "", modifier: Modifier = Modifier) {
     Column(
         modifier = modifier.padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("No hay documentos", style = MaterialTheme.typography.titleMedium)
+        Text("No hay comprobantes", style = MaterialTheme.typography.titleMedium)
         Text(
-            "Los comprobantes emitidos aparecerán aquí.",
+            text = if (query.isEmpty()) "Los comprobantes emitidos aparecerán aquí." else "No se encontraron comprobantes para '$query'",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
         )
