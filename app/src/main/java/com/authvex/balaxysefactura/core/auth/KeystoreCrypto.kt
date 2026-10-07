@@ -1,18 +1,21 @@
 package com.authvex.balaxysefactura.core.auth
 
+import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
 
 /**
- * Cifrado nativo respaldado por Android Keystore (AES-256 GCM).
+ * Cifrado nativo administrado por Android Keystore (AES-256 GCM con IV aleatorio de 12 bytes por operación).
  * Garantiza que los tokens de sesión (access_token y refresh_token) almacenados en DataStore
- * estén cifrados con llaves protegidas por hardware en el dispositivo.
+ * no sean exportables y estén protegidos contra extracción en texto claro.
  */
 object KeystoreCrypto {
 
@@ -40,6 +43,31 @@ object KeystoreCrypto {
         return (keyStore.getEntry(KEY_ALIAS, null) as KeyStore.SecretKeyEntry).secretKey
     }
 
+    /**
+     * Consulta el nivel real de seguridad que el sistema Android asigna a la clave AES en Keystore.
+     * Retorna "STRONGBOX", "TRUSTED_ENVIRONMENT", "SOFTWARE" o "UNAVAILABLE".
+     */
+    fun getSecurityLevel(): String {
+        return try {
+            val secretKey = getSecretKey()
+            val factory = SecretKeyFactory.getInstance(secretKey.algorithm, ANDROID_KEYSTORE)
+            val keyInfo = factory.getKeySpec(secretKey, KeyInfo::class.java) as KeyInfo
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                when (keyInfo.securityLevel) {
+                    KeyProperties.SECURITY_LEVEL_STRONGBOX -> "STRONGBOX"
+                    KeyProperties.SECURITY_LEVEL_TRUSTED_ENVIRONMENT -> "TRUSTED_ENVIRONMENT"
+                    KeyProperties.SECURITY_LEVEL_SOFTWARE -> "SOFTWARE"
+                    else -> "UNKNOWN"
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                if (keyInfo.isInsideSecureHardware) "TRUSTED_ENVIRONMENT" else "SOFTWARE"
+            }
+        } catch (e: Exception) {
+            "UNAVAILABLE"
+        }
+    }
+
     fun encrypt(plainText: String?): String? {
         if (plainText.isNullOrEmpty()) return null
         return try {
@@ -48,6 +76,7 @@ object KeystoreCrypto {
             val iv = cipher.iv
             val encryptedBytes = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
 
+            // Concatenar IV (12 bytes) + CipherText
             val combined = ByteArray(iv.size + encryptedBytes.size)
             System.arraycopy(iv, 0, combined, 0, iv.size)
             System.arraycopy(encryptedBytes, 0, combined, iv.size, encryptedBytes.size)
@@ -60,9 +89,13 @@ object KeystoreCrypto {
 
     fun decrypt(cipherTextBase64: String?): String? {
         if (cipherTextBase64.isNullOrEmpty()) return null
+        // Compatibilidad con tokens legacy sin cifrar (formato JWT encadenado "eyJ...")
+        if (cipherTextBase64.startsWith("eyJ")) {
+            return cipherTextBase64
+        }
         return try {
             val combined = Base64.decode(cipherTextBase64, Base64.NO_WRAP)
-            if (combined.size <= 12) return cipherTextBase64
+            if (combined.size <= 12) return null
 
             val iv = ByteArray(12)
             val encryptedBytes = ByteArray(combined.size - 12)
@@ -75,7 +108,8 @@ object KeystoreCrypto {
 
             String(cipher.doFinal(encryptedBytes), Charsets.UTF_8)
         } catch (e: Exception) {
-            cipherTextBase64
+            // Ante fallo de integridad (AEADBadTagException, clave re-generada o corrupta), retornar null
+            null
         }
     }
 }
