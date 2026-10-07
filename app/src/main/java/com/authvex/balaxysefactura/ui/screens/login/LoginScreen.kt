@@ -1,5 +1,6 @@
 package com.authvex.balaxysefactura.ui.screens.login
 
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,9 +17,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.AutofillNode
+import androidx.compose.ui.autofill.AutofillType
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalAutofill
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -28,6 +35,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.authvex.balaxysefactura.R
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun LoginScreen(
     viewModel: LoginViewModel,
@@ -35,6 +43,21 @@ fun LoginScreen(
 ) {
     val uiState = viewModel.uiState
     var passwordVisible by remember { mutableStateOf(false) }
+    val autofill = LocalAutofill.current
+
+    val emailAutofillNode = remember {
+        AutofillNode(
+            autofillTypes = listOf(AutofillType.EmailAddress, AutofillType.Username),
+            onFill = { viewModel.email = it }
+        )
+    }
+
+    val passwordAutofillNode = remember {
+        AutofillNode(
+            autofillTypes = listOf(AutofillType.Password),
+            onFill = { viewModel.password = it }
+        )
+    }
 
     LaunchedEffect(uiState) {
         if (uiState is LoginUiState.Success) {
@@ -108,7 +131,18 @@ fun LoginScreen(
                         onValueChange = { viewModel.email = it },
                         label = { Text("Usuario / Email") },
                         placeholder = { Text("ejemplo@balaxys.com") },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onGloballyPositioned {
+                                emailAutofillNode.boundingBox = it.boundsInWindow()
+                            }
+                            .onFocusChanged { focusState ->
+                                if (focusState.isFocused) {
+                                    autofill?.requestAutofillForNode(emailAutofillNode)
+                                } else {
+                                    autofill?.cancelAutofillForNode(emailAutofillNode)
+                                }
+                            },
                         singleLine = true,
                         leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
                         enabled = uiState !is LoginUiState.Loading,
@@ -123,7 +157,18 @@ fun LoginScreen(
                         value = viewModel.password,
                         onValueChange = { viewModel.password = it },
                         label = { Text("Contraseña") },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onGloballyPositioned {
+                                passwordAutofillNode.boundingBox = it.boundsInWindow()
+                            }
+                            .onFocusChanged { focusState ->
+                                if (focusState.isFocused) {
+                                    autofill?.requestAutofillForNode(passwordAutofillNode)
+                                } else {
+                                    autofill?.cancelAutofillForNode(passwordAutofillNode)
+                                }
+                            },
                         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         singleLine = true,
                         leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
@@ -142,7 +187,9 @@ fun LoginScreen(
                             imeAction = ImeAction.Done
                         ),
                         keyboardActions = KeyboardActions(
-                            onDone = { viewModel.onLoginClick() }
+                            onDone = {
+                                viewModel.onLoginClick()
+                            }
                         )
                     )
 
@@ -181,7 +228,9 @@ fun LoginScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Button(
-                        onClick = { viewModel.onLoginClick() },
+                        onClick = {
+                            viewModel.onLoginClick()
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(56.dp),

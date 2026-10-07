@@ -32,8 +32,8 @@ class AuthPreferences(private val context: Context) {
 
     val session: Flow<AuthSession> = context.dataStore.data.map { preferences ->
         AuthSession(
-            accessToken = preferences[ACCESS_TOKEN_KEY],
-            refreshToken = preferences[REFRESH_TOKEN_KEY],
+            accessToken = KeystoreCrypto.decrypt(preferences[ACCESS_TOKEN_KEY]),
+            refreshToken = KeystoreCrypto.decrypt(preferences[REFRESH_TOKEN_KEY]),
             expiresAt = preferences[EXPIRES_AT_KEY],
             empresaId = preferences[EMPRESA_ID_KEY],
             usuarioId = preferences[USUARIO_ID_KEY]
@@ -54,8 +54,8 @@ class AuthPreferences(private val context: Context) {
         usuarioId: Int
     ) {
         context.dataStore.edit { preferences ->
-            preferences[ACCESS_TOKEN_KEY] = accessToken
-            preferences[REFRESH_TOKEN_KEY] = refreshToken
+            preferences[ACCESS_TOKEN_KEY] = KeystoreCrypto.encrypt(accessToken) ?: accessToken
+            preferences[REFRESH_TOKEN_KEY] = KeystoreCrypto.encrypt(refreshToken) ?: refreshToken
             preferences[EXPIRES_AT_KEY] = expiresAt
             preferences[EMPRESA_ID_KEY] = empresaId.toString()
             preferences[USUARIO_ID_KEY] = usuarioId.toString()
