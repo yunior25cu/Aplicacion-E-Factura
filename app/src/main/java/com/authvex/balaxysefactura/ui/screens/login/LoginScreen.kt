@@ -1,5 +1,6 @@
 package com.authvex.balaxysefactura.ui.screens.login
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,11 +16,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.authvex.balaxysefactura.R
 
 @Composable
 fun LoginScreen(
@@ -58,34 +61,39 @@ fun LoginScreen(
             // Logo / Header Section
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(bottom = 48.dp)
+                modifier = Modifier.padding(bottom = 36.dp)
             ) {
                 Surface(
                     modifier = Modifier
-                        .size(80.dp)
-                        .clip(RoundedCornerShape(20.dp)),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.2f)
+                        .size(88.dp)
+                        .clip(RoundedCornerShape(22.dp)),
+                    color = Color(0xFF0B1530).copy(alpha = 0.35f)
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "B",
-                            style = MaterialTheme.typography.displayLarge,
-                            color = Color.White,
-                            fontSize = 48.sp
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_balaxys_isotype),
+                            contentDescription = "Balaxys Isotype",
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "Balaxys ERP",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
+                Image(
+                    painter = painterResource(id = R.drawable.ic_balaxys_logo_white),
+                    contentDescription = "Balaxys ERP",
+                    modifier = Modifier
+                        .height(38.dp)
+                        .padding(horizontal = 8.dp)
                 )
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = "E-Factura Móvil",
                     style = MaterialTheme.typography.titleMedium,
-                    color = Color.White.copy(alpha = 0.8f)
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontWeight = FontWeight.Medium
                 )
             }
 
