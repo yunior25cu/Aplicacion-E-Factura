@@ -63,32 +63,14 @@ fun LoginScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(bottom = 36.dp)
             ) {
-                Surface(
-                    modifier = Modifier
-                        .size(88.dp)
-                        .clip(RoundedCornerShape(22.dp)),
-                    color = Color(0xFF0B1530).copy(alpha = 0.35f)
-                ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.padding(12.dp)
-                    ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.ic_balaxys_isotype),
-                            contentDescription = "Balaxys Isotype",
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
                 Image(
                     painter = painterResource(id = R.drawable.ic_balaxys_logo_white),
-                    contentDescription = "Balaxys ERP",
+                    contentDescription = "Balaxys",
                     modifier = Modifier
-                        .height(38.dp)
+                        .height(48.dp)
                         .padding(horizontal = 8.dp)
                 )
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "E-Factura Móvil",
                     style = MaterialTheme.typography.titleMedium,
