@@ -11,11 +11,15 @@ data class ClienteDto(
     val id: Int,
     @SerialName("denominacion")
     val nombre: String,
+    val codigo: String? = null,
     val ruc: String? = null,
     val direccion: String? = null,
     val tipoDocumentoIdentificacion: Int? = null,
     val esEmpresa: Boolean? = null
-)
+) {
+    val documentNumber: String?
+        get() = codigo?.takeIf { it.isNotBlank() } ?: ruc?.takeIf { it.isNotBlank() }
+}
 
 @Serializable
 data class ProductoDto(

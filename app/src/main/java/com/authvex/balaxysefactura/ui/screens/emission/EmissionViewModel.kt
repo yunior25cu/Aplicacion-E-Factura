@@ -144,12 +144,22 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
         }
     }
 
+    fun initClientSearch() {
+        searchClients("")
+    }
+
+    fun initProductSearch() {
+        searchProducts("")
+    }
+
     fun searchClients(query: String) {
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
-            delay(500)
+            if (query.isNotEmpty()) {
+                delay(300)
+            }
             isSearching = true
-            repository.getClientes(query).onSuccess { clients ->
+            repository.getClientes(query.ifBlank { null }).onSuccess { clients ->
                 val cfeCode = selectedFiscalType?.cfeCode
                 clientSearchResults = if (cfeCode == 111) {
                     clients.filter { isClientCompatibleWithCfe(it.tipoDocumentoIdentificacion, 111) }
@@ -164,9 +174,11 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
     fun searchProducts(query: String) {
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
-            delay(500)
+            if (query.isNotEmpty()) {
+                delay(300)
+            }
             isSearching = true
-            repository.getProductos(query).onSuccess {
+            repository.getProductos(query.ifBlank { null }).onSuccess {
                 productSearchResults = it
             }
             isSearching = false
