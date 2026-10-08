@@ -1,12 +1,16 @@
 package com.authvex.balaxysefactura.ui.screens.budget.detail
 
+import android.content.Context
+import android.content.Intent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.authvex.balaxysefactura.core.network.*
 import com.authvex.balaxysefactura.core.repository.BudgetRepository
+import com.authvex.balaxysefactura.core.repository.CfeRepository
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -29,6 +33,7 @@ sealed class BudgetActionEvent {
 
 class BudgetDetailViewModel(
     private val budgetRepository: BudgetRepository,
+    private val cfeRepository: CfeRepository? = null,
     val budgetId: Long
 ) : ViewModel() {
 
@@ -38,6 +43,9 @@ class BudgetDetailViewModel(
         private set
 
     var actionEvent by mutableStateOf<BudgetActionEvent>(BudgetActionEvent.Idle)
+        private set
+
+    var isSharingPdf by mutableStateOf(false)
         private set
 
     // Invoicing Dialog State
@@ -90,8 +98,8 @@ class BudgetDetailViewModel(
 
     fun confirmBudget() {
         if (actionEvent is BudgetActionEvent.Processing) return
+        actionEvent = BudgetActionEvent.Processing
         viewModelScope.launch {
-            actionEvent = BudgetActionEvent.Processing
             val result = budgetRepository.confirmBudget(budgetId)
             result.onSuccess {
                 actionEvent = BudgetActionEvent.ConfirmedSuccess("Presupuesto confirmado correctamente")
@@ -114,6 +122,49 @@ class BudgetDetailViewModel(
             }.onFailure { throwable ->
                 val appError = ErrorMapper.fromThrowable(throwable)
                 actionEvent = BudgetActionEvent.ActionError(appError.getDisplayMessage())
+            }
+        }
+    }
+
+    fun sharePdf(context: Context, customCompany: EmpresaDto? = null) {
+        if (isSharingPdf) return
+        val currentBudget = (uiState as? BudgetDetailUiState.Success)?.budget ?: return
+
+        isSharingPdf = true
+        viewModelScope.launch {
+            try {
+                val company = customCompany ?: cfeRepository?.getEmpresa()?.getOrNull() ?: EmpresaDto(id = 1)
+                val pdfResult = BudgetPdfGenerator.generate(context, currentBudget, company)
+
+                pdfResult.onSuccess { pdfFile ->
+                    val contentUri = FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        pdfFile
+                    )
+
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "application/pdf"
+                        putExtra(Intent.EXTRA_STREAM, contentUri)
+                        putExtra(Intent.EXTRA_SUBJECT, "Presupuesto ${currentBudget.folio ?: currentBudget.id}")
+                        putExtra(Intent.EXTRA_TEXT, "Adjunto presupuesto ${currentBudget.folio ?: currentBudget.id}")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+
+                    val chooser = Intent.createChooser(shareIntent, "Compartir presupuesto")
+                    try {
+                        context.startActivity(chooser)
+                    } catch (_: Exception) {
+                        actionEvent = BudgetActionEvent.ActionError("No hay aplicaciones disponibles para compartir el PDF.")
+                    }
+                }.onFailure { throwable ->
+                    val appError = ErrorMapper.fromThrowable(throwable)
+                    actionEvent = BudgetActionEvent.ActionError(appError.getDisplayMessage())
+                }
+            } catch (e: Exception) {
+                actionEvent = BudgetActionEvent.ActionError("Error al generar PDF: ${e.message}")
+            } finally {
+                isSharingPdf = false
             }
         }
     }

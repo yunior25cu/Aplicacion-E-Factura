@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -68,6 +69,18 @@ fun BudgetDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Regresar")
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { viewModel.sharePdf(context) },
+                        enabled = !viewModel.isSharingPdf
+                    ) {
+                        if (viewModel.isSharingPdf) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        } else {
+                            Icon(Icons.Default.Share, contentDescription = "Compartir Presupuesto PDF")
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -255,6 +268,24 @@ fun BudgetDetailScreen(
                                     Text("Total:", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                                     Text("$symbol ${String.format(Locale.US, "%.2f", total)}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                 }
+                            }
+                        }
+
+                        // Share PDF Action (Available for ALL states)
+                        OutlinedButton(
+                            onClick = { viewModel.sharePdf(context) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            enabled = !viewModel.isSharingPdf
+                        ) {
+                            if (viewModel.isSharingPdf) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            } else {
+                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Compartir PDF", fontWeight = FontWeight.Bold)
                             }
                         }
 
