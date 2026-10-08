@@ -2,6 +2,7 @@ package com.authvex.balaxysefactura.ui.screens.budget.detail
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,7 +19,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.authvex.balaxysefactura.core.network.BudgetDto
 import com.authvex.balaxysefactura.core.network.BudgetEstado
 import java.util.Locale
 
@@ -234,7 +234,7 @@ fun BudgetDetailScreen(
                                 val symbol = budget.moneda?.codigo ?: "UYU"
                                 DetailRow("Subtotal:", "$symbol ${String.format(Locale.US, "%.2f", budget.importeBase ?: 0.0)}")
                                 DetailRow("IVA:", "$symbol ${String.format(Locale.US, "%.2f", budget.iva ?: 0.0)}")
-                                if ((budget.descuento ?: 0.0) > 0) {
+                                if ((budget.descuento) > 0) {
                                     DetailRow("Descuento:", "$symbol ${String.format(Locale.US, "%.2f", budget.descuento)}")
                                 }
                                 HorizontalDivider()
@@ -291,7 +291,10 @@ fun BudgetDetailScreen(
                                 }
                             } else if (estadoEnum == BudgetEstado.CONFIRMADO) {
                                 Button(
-                                    onClick = { showInvoiceDialog = true },
+                                    onClick = {
+                                        viewModel.loadInvoiceOptions()
+                                        showInvoiceDialog = true
+                                    },
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(52.dp),
@@ -316,18 +319,81 @@ fun BudgetDetailScreen(
     }
 
     if (showInvoiceDialog) {
+        val options = viewModel.invoiceOptions
         AlertDialog(
             onDismissRequest = { showInvoiceDialog = false },
             title = { Text("Facturar Presupuesto") },
             text = {
-                Text("Se generará la factura correspondiente. Si la empresa cuenta con facturación electrónica activa, el servidor procesará la emisión y encolado electrónico CFE automáticamente.")
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (viewModel.isOptionsLoading) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Cargando opciones de facturación...")
+                        }
+                    } else if (options != null) {
+                        if (options.esElectronico) {
+                            Text(
+                                text = "Comprobante Electrónico: ${options.tipoFiscal ?: "e-Factura"} (${options.cfeCode ?: 111})",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+
+                            Text("Seleccione Punto de Venta Fiscal:", style = MaterialTheme.typography.bodySmall)
+
+                            options.puntosVenta.forEach { pv ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { viewModel.selectedPuntoVentaId = pv.id }
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = viewModel.selectedPuntoVentaId == pv.id,
+                                        onClick = { viewModel.selectedPuntoVentaId = pv.id }
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("${pv.nombre} (N° ${pv.numero})")
+                                }
+                            }
+                        } else {
+                            Text("Se generará una Factura estándar no electrónica.")
+                        }
+
+                        OutlinedTextField(
+                            value = viewModel.dialogFechaEmision,
+                            onValueChange = { viewModel.dialogFechaEmision = it },
+                            label = { Text("Fecha Emisión") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
+                            value = viewModel.dialogFechaConfirmacion,
+                            onValueChange = { viewModel.dialogFechaConfirmacion = it },
+                            label = { Text("Fecha Confirmación") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+                }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.invoiceBudget()
+                        viewModel.invoiceBudget(
+                            fechaEmision = viewModel.dialogFechaEmision,
+                            fechaConfirmacion = viewModel.dialogFechaConfirmacion,
+                            puntoVentaIdFiscal = viewModel.selectedPuntoVentaId,
+                            lineas = null // Full invoicing
+                        )
                     },
-                    enabled = actionEvent !is BudgetActionEvent.Processing
+                    enabled = !viewModel.isOptionsLoading && actionEvent !is BudgetActionEvent.Processing
                 ) {
                     Text("Facturar Ahora")
                 }

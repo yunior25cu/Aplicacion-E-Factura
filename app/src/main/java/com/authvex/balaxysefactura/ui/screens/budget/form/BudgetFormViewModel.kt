@@ -44,9 +44,10 @@ class BudgetFormViewModel(
     var fechaConfirmacion by mutableStateOf(getTodayDate())
     var fechaVencimiento by mutableStateOf(getFutureDate(30))
 
+    var companyBaseCurrencyId by mutableStateOf<Int?>(null)
     var selectedCliente by mutableStateOf<ClienteDto?>(null)
     var selectedAlmacen by mutableStateOf<CatalogoItemDto?>(null)
-    var selectedMoneda by mutableStateOf<CatalogoItemDto?>(null)
+    var selectedMoneda by mutableStateOf<TasaCambioSimpleDto?>(null)
     var tasaCambio by mutableStateOf(1.0)
     var preciosIncluyenIva by mutableStateOf(true)
 
@@ -59,12 +60,19 @@ class BudgetFormViewModel(
     // Catalogs
     var clientesList by mutableStateOf<List<ClienteDto>>(emptyList())
     var almacenesList by mutableStateOf<List<CatalogoItemDto>>(emptyList())
-    var monedasList by mutableStateOf<List<CatalogoItemDto>>(emptyList())
+    var tasasCambioList by mutableStateOf<List<TasaCambioSimpleDto>>(emptyList())
     var productosList by mutableStateOf<List<ProductoDto>>(emptyList())
 
     var isCatalogsLoading by mutableStateOf(false)
     private var clientSearchJob: Job? = null
     private var productSearchJob: Job? = null
+
+    // Line Editing Dialog State
+    var configuringProduct by mutableStateOf<ProductoDto?>(null)
+    var editingLineIndex by mutableStateOf<Int?>(null)
+    var dialogQuantityText by mutableStateOf("1.0")
+    var dialogUnitPriceText by mutableStateOf("0.0")
+    var lineDialogError by mutableStateOf<String?>(null)
 
     init {
         loadInitialCatalogs()
@@ -81,6 +89,11 @@ class BudgetFormViewModel(
     private fun loadInitialCatalogs() {
         viewModelScope.launch {
             isCatalogsLoading = true
+
+            cfeRepository.getEmpresa().onSuccess { empresa ->
+                companyBaseCurrencyId = empresa.moneda?.id
+            }
+
             cfeRepository.getClientes().onSuccess { clientesList = it }
             cfeRepository.getAlmacenes().onSuccess {
                 almacenesList = it
@@ -88,16 +101,29 @@ class BudgetFormViewModel(
                     selectedAlmacen = it.first()
                 }
             }
-            cfeRepository.getMonedas().onSuccess {
-                monedasList = it
-                if (it.isNotEmpty() && selectedMoneda == null) {
-                    val defaultMoneda = it.find { m -> m.codigo?.contains("UYU", ignoreCase = true) == true || m.nombre.contains("Peso", ignoreCase = true) } ?: it.first()
-                    selectedMoneda = defaultMoneda
-                    updateExchangeRate(defaultMoneda)
-                }
+
+            cfeRepository.getTasaCambios(fechaConfirmacion).onSuccess { tasas ->
+                tasasCambioList = tasas
+                resolveSelectedMoneda(tasas)
             }
+
             cfeRepository.getProductos().onSuccess { productosList = it }
             isCatalogsLoading = false
+        }
+    }
+
+    private fun resolveSelectedMoneda(tasas: List<TasaCambioSimpleDto>) {
+        val baseId = companyBaseCurrencyId
+        val matchedMoneda = if (baseId != null) {
+            tasas.find { it.id == baseId }
+        } else null
+
+        val selected = matchedMoneda ?: tasas.firstOrNull()
+        selectedMoneda = selected
+
+        if (selected != null) {
+            val isBase = baseId != null && selected.id == baseId
+            tasaCambio = if (isBase) 1.0 else (if (selected.tasaPromedio > 0) selected.tasaPromedio else 1.0)
         }
     }
 
@@ -119,56 +145,84 @@ class BudgetFormViewModel(
 
     fun onFechaConfirmacionChanged(newDate: String) {
         fechaConfirmacion = newDate
-        selectedMoneda?.let { updateExchangeRate(it) }
-    }
-
-    fun onMonedaChanged(moneda: CatalogoItemDto) {
-        selectedMoneda = moneda
-        updateExchangeRate(moneda)
-    }
-
-    private fun updateExchangeRate(moneda: CatalogoItemDto) {
-        val isBaseCurrency = moneda.codigo?.contains("UYU", ignoreCase = true) == true || moneda.nombre.contains("Peso", ignoreCase = true)
-        if (isBaseCurrency) {
-            tasaCambio = 1.0
-        } else {
-            viewModelScope.launch {
-                cfeRepository.getTasaCambios(fechaConfirmacion).onSuccess { tasas ->
-                    val tasaItem = tasas.find { it.id == moneda.id || it.codigo.equals(moneda.codigo, ignoreCase = true) }
-                    if (tasaItem != null && tasaItem.tasaPromedio > 0) {
-                        tasaCambio = tasaItem.tasaPromedio
-                    } else if (tasas.isNotEmpty()) {
-                        tasaCambio = tasas.first().tasaPromedio
-                    }
+        viewModelScope.launch {
+            cfeRepository.getTasaCambios(newDate).onSuccess { tasas ->
+                tasasCambioList = tasas
+                val currentId = selectedMoneda?.id
+                val matched = tasas.find { it.id == currentId } ?: tasas.find { it.id == companyBaseCurrencyId } ?: tasas.firstOrNull()
+                selectedMoneda = matched
+                if (matched != null) {
+                    val isBase = companyBaseCurrencyId != null && matched.id == companyBaseCurrencyId
+                    tasaCambio = if (isBase) 1.0 else (if (matched.tasaPromedio > 0) matched.tasaPromedio else 1.0)
                 }
             }
         }
     }
 
-    fun addLineItem(producto: ProductoDto, cantidad: Double = 1.0) {
-        val currentList = lineItems.value.toMutableList()
-        val existingIndex = currentList.indexOfFirst { it.producto.id == producto.id }
-        if (existingIndex >= 0) {
-            val item = currentList[existingIndex]
-            currentList[existingIndex] = item.copy(cantidad = item.cantidad + cantidad)
+    fun onMonedaChanged(moneda: TasaCambioSimpleDto) {
+        selectedMoneda = moneda
+        val isBase = companyBaseCurrencyId != null && moneda.id == companyBaseCurrencyId
+        tasaCambio = if (isBase) 1.0 else (if (moneda.tasaPromedio > 0) moneda.tasaPromedio else 1.0)
+    }
+
+    // Line Configuration
+    fun openLineConfiguration(producto: ProductoDto, indexToEdit: Int? = null) {
+        configuringProduct = producto
+        editingLineIndex = indexToEdit
+        lineDialogError = null
+
+        if (indexToEdit != null && indexToEdit in lineItems.value.indices) {
+            val item = lineItems.value[indexToEdit]
+            dialogQuantityText = item.cantidad.toString()
+            dialogUnitPriceText = item.precioUnitario.toString()
         } else {
-            currentList.add(BudgetFormLineItem(producto = producto, cantidad = cantidad, precioUnitario = producto.precio ?: 0.0))
+            dialogQuantityText = "1.0"
+            dialogUnitPriceText = (producto.precio ?: 0.0).toString()
         }
+    }
+
+    fun closeLineConfiguration() {
+        configuringProduct = null
+        editingLineIndex = null
+        lineDialogError = null
+    }
+
+    fun confirmLineConfiguration(quantityStr: String, priceStr: String): Boolean {
+        val qty = quantityStr.replace(',', '.').toDoubleOrNull()
+        if (qty == null || qty <= 0) {
+            lineDialogError = "Cantidad debe ser un número válido mayor a 0"
+            return false
+        }
+
+        val price = priceStr.replace(',', '.').toDoubleOrNull()
+        if (price == null || price < 0) {
+            lineDialogError = "Precio debe ser un número válido mayor o igual a 0"
+            return false
+        }
+
+        val prod = configuringProduct ?: return false
+        val currentList = lineItems.value.toMutableList()
+        val index = editingLineIndex
+
+        if (index != null && index in currentList.indices) {
+            currentList[index] = currentList[index].copy(
+                producto = prod,
+                cantidad = qty,
+                precioUnitario = price
+            )
+        } else {
+            currentList.add(BudgetFormLineItem(producto = prod, cantidad = qty, precioUnitario = price))
+        }
+
         lineItems.value = currentList
+        closeLineConfiguration()
+        return true
     }
 
     fun removeLineItem(index: Int) {
         if (index in lineItems.value.indices) {
             val currentList = lineItems.value.toMutableList()
             currentList.removeAt(index)
-            lineItems.value = currentList
-        }
-    }
-
-    fun updateLineItemQuantity(index: Int, newQuantity: Double) {
-        if (index in lineItems.value.indices && newQuantity > 0) {
-            val currentList = lineItems.value.toMutableList()
-            currentList[index] = currentList[index].copy(cantidad = newQuantity)
             lineItems.value = currentList
         }
     }
@@ -226,7 +280,7 @@ class BudgetFormViewModel(
         viewModelScope.launch {
             uiState = BudgetFormUiState.Loading
 
-            val isBaseCurrency = moneda.codigo?.contains("UYU", ignoreCase = true) == true || moneda.nombre.contains("Peso", ignoreCase = true)
+            val isBaseCurrency = companyBaseCurrencyId != null && moneda.id == companyBaseCurrencyId
             val rate = if (isBaseCurrency) 1.0 else (if (tasaCambio > 0) tasaCambio else 1.0)
 
             val documentProducts = lineItems.value.map { item ->

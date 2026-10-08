@@ -83,7 +83,7 @@ class BudgetRepository(private val budgetApi: BudgetApi) {
         }
     }
 
-    suspend fun invoiceBudget(id: Long, dto: BudgetFacturarDto? = null): Result<Long> {
+    suspend fun invoiceBudget(id: Long, dto: BudgetFacturarDto): Result<Long> {
         return try {
             val facturaId = budgetApi.invoiceBudget(id, dto)
             Result.success(facturaId)

@@ -33,6 +33,6 @@ interface BudgetApi {
     @PUT("PreFactura/facturar/{id}")
     suspend fun invoiceBudget(
         @Path("id") id: Long,
-        @Body dto: BudgetFacturarDto? = null
+        @Body dto: BudgetFacturarDto
     ): Long
 }

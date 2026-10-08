@@ -1,8 +1,6 @@
 package com.authvex.balaxysefactura.ui.screens.budget
 
-import com.authvex.balaxysefactura.core.network.CatalogoItemDto
-import com.authvex.balaxysefactura.core.network.ClienteDto
-import com.authvex.balaxysefactura.core.network.ProductoDto
+import com.authvex.balaxysefactura.core.network.*
 import com.authvex.balaxysefactura.core.repository.BudgetRepository
 import com.authvex.balaxysefactura.core.repository.CfeRepository
 import com.authvex.balaxysefactura.ui.screens.budget.form.BudgetFormViewModel
@@ -13,13 +11,16 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.check
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -37,9 +38,13 @@ class BudgetFormViewModelTest {
         cfeRepository = mock()
 
         runTest {
+            whenever(cfeRepository.getEmpresa()).thenReturn(Result.success(EmpresaDto(id = 10, moneda = CatalogoItemDto(50, "Pesos Test", "UYU"))))
             whenever(cfeRepository.getClientes(anyOrNull())).thenReturn(Result.success(emptyList()))
             whenever(cfeRepository.getAlmacenes()).thenReturn(Result.success(listOf(CatalogoItemDto(2, "Almacén Central"))))
-            whenever(cfeRepository.getMonedas()).thenReturn(Result.success(listOf(CatalogoItemDto(1, "Pesos Uruguayos", "UYU"), CatalogoItemDto(2, "Dólares", "USD"))))
+            whenever(cfeRepository.getTasaCambios(any())).thenReturn(Result.success(listOf(
+                TasaCambioSimpleDto(50, "UYU", "Pesos Test", "$", 2, 1.0),
+                TasaCambioSimpleDto(51, "USD", "Dólar", "$", 2, 40.0)
+            )))
             whenever(cfeRepository.getProductos(anyOrNull())).thenReturn(Result.success(emptyList()))
         }
 
@@ -52,74 +57,77 @@ class BudgetFormViewModelTest {
     }
 
     @Test
-    fun `BASE_CURRENCY_SEMANTICS_MATCH_WEB - base currency sets original amounts to 0`() = runTest {
-        viewModel.selectedCliente = ClienteDto(10, "Cliente Test")
-        viewModel.selectedAlmacen = CatalogoItemDto(2, "Almacén")
-        viewModel.selectedMoneda = CatalogoItemDto(1, "Pesos Uruguayos", "UYU")
-        viewModel.tasaCambio = 1.0
-        viewModel.preciosIncluyenIva = true
-
-        val prod = ProductoDto(50, "Producto Base", precio = 122.0, tasaIva = 0.22)
-        viewModel.addLineItem(prod, cantidad = 1.0)
-
-        whenever(budgetRepository.createBudget(check { dto ->
-            assertEquals(1.0, dto.tasaCambio, 0.001)
-            assertEquals(100.0, dto.importeBase, 0.01)
-            assertEquals(22.0, dto.iva, 0.01)
-            assertEquals(122.0, dto.importeTotalBase, 0.01)
-
-            // Web parity: Base currency original amounts must be 0
-            assertEquals(0.0, dto.importeOriginal, 0.001)
-            assertEquals(0.0, dto.ivaOriginal, 0.001)
-            assertEquals(0.0, dto.importeTotalOriginal, 0.001)
-        })).thenReturn(Result.success(501L))
-
-        viewModel.submitForm()
+    fun `BUDGET_DOES_NOT_USE_GENERIC_MONEDA_CATALOG - fetches TasaCambios instead`() = runTest {
+        verify(cfeRepository).getTasaCambios(any())
+        verify(cfeRepository, never()).getMonedas()
     }
 
     @Test
-    fun `FOREIGN_CURRENCY_SEMANTICS_MATCH_WEB - foreign currency populates original amounts`() = runTest {
-        viewModel.selectedCliente = ClienteDto(10, "Cliente Test")
-        viewModel.selectedAlmacen = CatalogoItemDto(2, "Almacén")
-        viewModel.selectedMoneda = CatalogoItemDto(2, "Dólares", "USD")
-        viewModel.tasaCambio = 40.0
-        viewModel.preciosIncluyenIva = true
-
-        val prod = ProductoDto(50, "Producto USD", precio = 100.0, tasaIva = 0.22)
-        viewModel.addLineItem(prod, cantidad = 1.0)
-
-        whenever(budgetRepository.createBudget(check { dto ->
-            assertEquals(40.0, dto.tasaCambio, 0.001)
-            // Base amounts = original * rate (40.0)
-            assertEquals(4000.0 * (100.0 / 122.0), dto.importeBase, 1.0)
-
-            // Original amounts = foreign currency values
-            assertTrue(dto.importeOriginal > 0)
-            assertTrue(dto.importeTotalOriginal > 0)
-        })).thenReturn(Result.success(502L))
-
-        viewModel.submitForm()
+    fun `COMPANY_BASE_CURRENCY_SELECTED_BY_ID - matches empresa moneda id`() = runTest {
+        assertEquals(50, viewModel.companyBaseCurrencyId)
+        assertEquals(50, viewModel.selectedMoneda?.id)
+        assertEquals(1.0, viewModel.tasaCambio, 0.001)
     }
 
     @Test
-    fun `BASE_PRICE_MODE_NET - calculates tax and subtotal for net price mode`() = runTest {
-        viewModel.preciosIncluyenIva = false
-        val prod = ProductoDto(50, "Producto Neto", precio = 100.0, tasaIva = 0.22)
-        viewModel.addLineItem(prod, cantidad = 1.0)
+    fun `DATE_CHANGE_RELOADS_EXCHANGE_RATES - refetches TasaCambios on date change`() = runTest {
+        whenever(cfeRepository.getTasaCambios("2026-12-01")).thenReturn(Result.success(listOf(
+            TasaCambioSimpleDto(50, "UYU", "Pesos Test", "$", 2, 1.0),
+            TasaCambioSimpleDto(51, "USD", "Dólar", "$", 2, 42.5)
+        )))
 
-        assertEquals(100.0, viewModel.calculateSubtotal(), 0.01)
-        assertEquals(22.0, viewModel.calculateIva(), 0.01)
-        assertEquals(122.0, viewModel.calculateTotal(), 0.01)
+        viewModel.onFechaConfirmacionChanged("2026-12-01")
+
+        verify(cfeRepository).getTasaCambios("2026-12-01")
     }
 
     @Test
-    fun `BASE_PRICE_MODE_GROSS - calculates tax and subtotal for gross price mode`() = runTest {
-        viewModel.preciosIncluyenIva = true
-        val prod = ProductoDto(50, "Producto IVA Inc", precio = 122.0, tasaIva = 0.22)
-        viewModel.addLineItem(prod, cantidad = 1.0)
+    fun `PRODUCT_SELECTION_OPENS_LINE_CONFIGURATION - opens dialog with product`() = runTest {
+        val prod = ProductoDto(100, "Producto Test", precio = 150.0, tasaIva = 0.22)
+        viewModel.openLineConfiguration(prod)
 
-        assertEquals(100.0, viewModel.calculateSubtotal(), 0.01)
-        assertEquals(22.0, viewModel.calculateIva(), 0.01)
-        assertEquals(122.0, viewModel.calculateTotal(), 0.01)
+        assertNotNull(viewModel.configuringProduct)
+        assertEquals("Producto Test", viewModel.configuringProduct?.nombre)
+        assertEquals("1.0", viewModel.dialogQuantityText)
+        assertEquals("150.0", viewModel.dialogUnitPriceText)
+    }
+
+    @Test
+    fun `QUANTITY_DECIMAL_ALLOWED and QUANTITY_CAN_BE_EDITED_AFTER_ADD - recalculates totals`() = runTest {
+        val prod = ProductoDto(100, "Producto Test", precio = 100.0, tasaIva = 0.22)
+        viewModel.openLineConfiguration(prod)
+
+        val success = viewModel.confirmLineConfiguration(quantityStr = "5.5", priceStr = "100.0")
+        assertTrue(success)
+        assertEquals(1, viewModel.lineItems.value.size)
+        assertEquals(5.5, viewModel.lineItems.value.first().cantidad, 0.001)
+
+        // Totals check
+        assertEquals(550.0 / 1.22, viewModel.calculateSubtotal(), 0.01)
+        assertEquals(550.0 - (550.0 / 1.22), viewModel.calculateIva(), 0.01)
+        assertEquals(550.0, viewModel.calculateTotal(), 0.01)
+
+        // Edit line quantity 5.5 -> 2.5
+        viewModel.openLineConfiguration(prod, indexToEdit = 0)
+        viewModel.confirmLineConfiguration(quantityStr = "2.5", priceStr = "100.0")
+
+        assertEquals(2.5, viewModel.lineItems.value.first().cantidad, 0.001)
+        assertEquals(100.0, viewModel.lineItems.value.first().precioUnitario, 0.001)
+        assertEquals(250.0, viewModel.calculateTotal(), 0.01)
+    }
+
+    @Test
+    fun `QUANTITY_ZERO_BLOCKED and QUANTITY_NEGATIVE_BLOCKED - shows validation error`() = runTest {
+        val prod = ProductoDto(100, "Producto Test", precio = 100.0)
+        viewModel.openLineConfiguration(prod)
+
+        assertFalse(viewModel.confirmLineConfiguration("0", "100.0"))
+        assertNotNull(viewModel.lineDialogError)
+
+        assertFalse(viewModel.confirmLineConfiguration("-2", "100.0"))
+        assertNotNull(viewModel.lineDialogError)
+
+        assertFalse(viewModel.confirmLineConfiguration("abc", "100.0"))
+        assertNotNull(viewModel.lineDialogError)
     }
 }

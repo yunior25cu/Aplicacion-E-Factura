@@ -6,14 +6,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Store
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,10 +22,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.authvex.balaxysefactura.core.network.CatalogoItemDto
 import com.authvex.balaxysefactura.core.network.ClienteDto
 import com.authvex.balaxysefactura.core.network.ProductoDto
+import com.authvex.balaxysefactura.core.network.TasaCambioSimpleDto
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -114,9 +117,9 @@ fun BudgetFormScreen(
                             shape = RoundedCornerShape(12.dp)
                         )
                         OutlinedTextField(
-                            value = viewModel.fechaVencimiento,
-                            onValueChange = { viewModel.fechaVencimiento = it },
-                            label = { Text("Fecha Vencimiento") },
+                            value = viewModel.fechaConfirmacion,
+                            onValueChange = { viewModel.onFechaConfirmacionChanged(it) },
+                            label = { Text("Fecha Confirmación") },
                             modifier = Modifier.weight(1f),
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
@@ -134,14 +137,14 @@ fun BudgetFormScreen(
                         )
                         DropdownSelector(
                             label = "Moneda",
-                            selectedOption = viewModel.selectedMoneda?.nombre ?: "Moneda",
-                            options = viewModel.monedasList.map { it.nombre },
-                            onOptionSelected = { index -> viewModel.onMonedaChanged(viewModel.monedasList[index]) },
+                            selectedOption = viewModel.selectedMoneda?.let { "${it.denominacion} (${it.codigo})" } ?: "Moneda",
+                            options = viewModel.tasasCambioList.map { "${it.denominacion} (${it.codigo})" },
+                            onOptionSelected = { index -> viewModel.onMonedaChanged(viewModel.tasasCambioList[index]) },
                             modifier = Modifier.weight(1f)
                         )
                     }
 
-                    if (viewModel.tasaCambio != 1.0) {
+                    if (viewModel.selectedMoneda?.id != viewModel.companyBaseCurrencyId) {
                         Text(
                             text = "Tasa de Cambio: ${String.format(Locale.US, "%.2f", viewModel.tasaCambio)}",
                             style = MaterialTheme.typography.bodySmall,
@@ -194,21 +197,35 @@ fun BudgetFormScreen(
                         )
                     } else {
                         viewModel.lineItems.value.forEachIndexed { index, line ->
+                            val lineTotal = line.cantidad * line.precioUnitario - line.descuento
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.openLineConfiguration(line.producto, index) },
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(line.producto.nombre, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                    Text(line.producto.nombre, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                                     Text(
-                                        text = "${line.cantidad} x ${viewModel.selectedMoneda?.codigo ?: "UYU"} ${String.format(Locale.US, "%.2f", line.precioUnitario)}",
+                                        text = "Cant: ${line.cantidad}  |  Precio: ${viewModel.selectedMoneda?.codigo ?: "UYU"} ${String.format(Locale.US, "%.2f", line.precioUnitario)}",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                    )
+                                    Text(
+                                        text = "Total Línea: ${viewModel.selectedMoneda?.codigo ?: "UYU"} ${String.format(Locale.US, "%.2f", lineTotal)}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold
                                     )
                                 }
-                                IconButton(onClick = { viewModel.removeLineItem(index) }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = MaterialTheme.colorScheme.error)
+                                Row {
+                                    IconButton(onClick = { viewModel.openLineConfiguration(line.producto, index) }) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Editar Cantidad/Precio", tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                    IconButton(onClick = { viewModel.removeLineItem(index) }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = MaterialTheme.colorScheme.error)
+                                    }
                                 }
                             }
                             HorizontalDivider()
@@ -278,10 +295,27 @@ fun BudgetFormScreen(
             productos = viewModel.productosList,
             onSearch = { viewModel.onProductQueryChanged(it) },
             onSelect = { product ->
-                viewModel.addLineItem(product)
                 showProductDialog = false
+                viewModel.openLineConfiguration(product)
             },
             onDismiss = { showProductDialog = false }
+        )
+    }
+
+    // Line Configuration Dialog (Quantity & Price)
+    if (viewModel.configuringProduct != null) {
+        LineConfigurationDialog(
+            product = viewModel.configuringProduct!!,
+            quantityText = viewModel.dialogQuantityText,
+            priceText = viewModel.dialogUnitPriceText,
+            currencySymbol = viewModel.selectedMoneda?.codigo ?: "UYU",
+            errorMessage = viewModel.lineDialogError,
+            onQuantityChange = { viewModel.dialogQuantityText = it },
+            onPriceChange = { viewModel.dialogUnitPriceText = it },
+            onConfirm = {
+                viewModel.confirmLineConfiguration(viewModel.dialogQuantityText, viewModel.dialogUnitPriceText)
+            },
+            onDismiss = { viewModel.closeLineConfiguration() }
         )
     }
 }
@@ -422,6 +456,77 @@ fun ProductSelectDialog(
         confirmButton = {},
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancelar") }
+        }
+    )
+}
+
+@Composable
+fun LineConfigurationDialog(
+    product: ProductoDto,
+    quantityText: String,
+    priceText: String,
+    currencySymbol: String,
+    errorMessage: String?,
+    onQuantityChange: (String) -> Unit,
+    onPriceChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(product.nombre, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = quantityText,
+                    onValueChange = onQuantityChange,
+                    label = { Text("Cantidad") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                )
+
+                OutlinedTextField(
+                    value = priceText,
+                    onValueChange = onPriceChange,
+                    label = { Text("Precio Unitario ($currencySymbol)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                )
+
+                val qty = quantityText.replace(',', '.').toDoubleOrNull() ?: 0.0
+                val price = priceText.replace(',', '.').toDoubleOrNull() ?: 0.0
+                val totalPreview = qty * price
+
+                Text(
+                    text = "Subtotal Estimado: $currencySymbol ${String.format(Locale.US, "%.2f", totalPreview)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                if (!errorMessage.isNullOrBlank()) {
+                    Text(
+                        text = errorMessage,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onConfirm) {
+                Text("Confirmar Línea")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
         }
     )
 }
