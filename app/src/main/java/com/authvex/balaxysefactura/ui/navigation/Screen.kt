@@ -10,4 +10,9 @@ sealed class Screen(val route: String) {
     }
     object Emission : Screen("emission")
     object Reports : Screen("reports")
+    object Budgets : Screen("budgets")
+    object BudgetDetail : Screen("budget_detail/{budgetId}") {
+        fun createRoute(budgetId: Long) = "budget_detail/$budgetId"
+    }
+    object BudgetForm : Screen("budget_form")
 }

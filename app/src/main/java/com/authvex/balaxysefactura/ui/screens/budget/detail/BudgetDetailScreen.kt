@@ -1,0 +1,353 @@
+package com.authvex.balaxysefactura.ui.screens.budget.detail
+
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.authvex.balaxysefactura.core.network.BudgetDto
+import com.authvex.balaxysefactura.core.network.BudgetEstado
+import java.util.Locale
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BudgetDetailScreen(
+    viewModel: BudgetDetailViewModel,
+    onNavigateBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val uiState = viewModel.uiState
+    val actionEvent = viewModel.actionEvent
+    var showInvoiceDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(actionEvent) {
+        when (actionEvent) {
+            is BudgetActionEvent.ConfirmedSuccess -> {
+                Toast.makeText(context, actionEvent.message, Toast.LENGTH_LONG).show()
+                viewModel.resetActionEvent()
+            }
+            is BudgetActionEvent.InvoicedSuccess -> {
+                Toast.makeText(context, actionEvent.message, Toast.LENGTH_LONG).show()
+                viewModel.resetActionEvent()
+                showInvoiceDialog = false
+            }
+            is BudgetActionEvent.ActionError -> {
+                Toast.makeText(context, actionEvent.message, Toast.LENGTH_LONG).show()
+                viewModel.resetActionEvent()
+            }
+            else -> {}
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Detalle de Presupuesto") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Regresar")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+            )
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(MaterialTheme.colorScheme.background)
+        ) {
+            when (val state = uiState) {
+                is BudgetDetailUiState.Loading -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+                is BudgetDetailUiState.Error -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = state.message,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(onClick = { viewModel.loadDetail() }) {
+                                Text("Reintentar")
+                            }
+                        }
+                    }
+                }
+                is BudgetDetailUiState.Success -> {
+                    val budget = state.budget
+                    val estadoEnum = BudgetEstado.fromCode(budget.estado)
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // Header Box with Status
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = budget.folio?.takeIf { it.isNotBlank() } ?: "Presupuesto N° ${budget.numero ?: budget.id}",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    val (statusColor, statusText) = when {
+                                        budget.factura != null -> Color(0xFF0288D1) to "Facturado"
+                                        estadoEnum == BudgetEstado.CONFIRMADO -> Color(0xFF2E7D32) to "Confirmado"
+                                        estadoEnum == BudgetEstado.ANULADO || estadoEnum == BudgetEstado.CANCELADO -> Color(0xFFC62828) to "Anulado"
+                                        else -> Color(0xFFE65100) to "Sin Confirmar"
+                                    }
+
+                                    Surface(
+                                        color = statusColor.copy(alpha = 0.12f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = statusText,
+                                            color = statusColor,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    text = "Cliente: ${budget.cliente?.nombre ?: "No especificado"}",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                if (!budget.cliente?.documentNumber.isNullOrBlank()) {
+                                    Text(
+                                        text = "RUC / Doc: ${budget.cliente?.documentNumber}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Dates & Metadata Card
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Información del Documento", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                HorizontalDivider()
+                                DetailRow("Fecha Emisión:", budget.fechaEmision.take(10))
+                                budget.fechaConfirmacion?.let { DetailRow("Fecha Confirmación:", it.take(10)) }
+                                DetailRow("Fecha Vencimiento:", budget.fechaVencimiento.take(10))
+                                DetailRow("Moneda:", budget.moneda?.nombre ?: "UYU")
+                                DetailRow("Tasa de Cambio:", String.format(Locale.US, "%.2f", budget.tasaCambio))
+                                budget.almacen?.let { DetailRow("Almacén:", it.nombre) }
+                            }
+                        }
+
+                        // Items Card
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Líneas de Productos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                HorizontalDivider()
+
+                                budget.documentoProductos.forEach { item ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = item.descripcion ?: item.producto?.nombre ?: "Producto",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            Text(
+                                                text = "Cant: ${item.cantidad} x ${budget.moneda?.codigo ?: "UYU"} ${String.format(Locale.US, "%.2f", item.precioBase)}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                            )
+                                        }
+                                        val lineTotal = item.importeBaseConIva ?: item.importeBase ?: 0.0
+                                        Text(
+                                            text = "${budget.moneda?.codigo ?: "UYU"} ${String.format(Locale.US, "%.2f", lineTotal)}",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                }
+                            }
+                        }
+
+                        // Summary Totals
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                val symbol = budget.moneda?.codigo ?: "UYU"
+                                DetailRow("Subtotal:", "$symbol ${String.format(Locale.US, "%.2f", budget.importeBase ?: 0.0)}")
+                                DetailRow("IVA:", "$symbol ${String.format(Locale.US, "%.2f", budget.iva ?: 0.0)}")
+                                if ((budget.descuento ?: 0.0) > 0) {
+                                    DetailRow("Descuento:", "$symbol ${String.format(Locale.US, "%.2f", budget.descuento)}")
+                                }
+                                HorizontalDivider()
+                                val total = budget.importeTotalBase ?: budget.importeTotalOriginal ?: 0.0
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Total:", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                    Text("$symbol ${String.format(Locale.US, "%.2f", total)}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
+
+                        // Linked Factura Card if present
+                        if (budget.factura != null) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFE1F5FE))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Receipt, contentDescription = null, tint = Color(0xFF0288D1), modifier = Modifier.size(32.dp))
+                                    Spacer(modifier = Modifier.width(16.dp))
+                                    Column {
+                                        Text("Factura Vinculada", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color(0xFF0288D1))
+                                        Text("Folio: ${budget.factura.folio ?: budget.factura.id}", style = MaterialTheme.typography.bodySmall, color = Color(0xFF01579B))
+                                    }
+                                }
+                            }
+                        }
+
+                        // Primary Action Buttons
+                        if (budget.factura == null) {
+                            if (estadoEnum == BudgetEstado.SIN_CONFIRMAR) {
+                                Button(
+                                    onClick = { viewModel.confirmBudget() },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(52.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    enabled = actionEvent !is BudgetActionEvent.Processing
+                                ) {
+                                    if (actionEvent is BudgetActionEvent.Processing) {
+                                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                                    } else {
+                                        Icon(Icons.Default.CheckCircle, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Confirmar Presupuesto", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            } else if (estadoEnum == BudgetEstado.CONFIRMADO) {
+                                Button(
+                                    onClick = { showInvoiceDialog = true },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(52.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
+                                    enabled = actionEvent !is BudgetActionEvent.Processing
+                                ) {
+                                    if (actionEvent is BudgetActionEvent.Processing) {
+                                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                                    } else {
+                                        Icon(Icons.Default.Receipt, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Facturar Presupuesto", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showInvoiceDialog) {
+        AlertDialog(
+            onDismissRequest = { showInvoiceDialog = false },
+            title = { Text("Facturar Presupuesto") },
+            text = {
+                Text("Se generará la factura correspondiente. Si la empresa cuenta con facturación electrónica activa, el servidor procesará la emisión y encolado electrónico CFE automáticamente.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.invoiceBudget()
+                    },
+                    enabled = actionEvent !is BudgetActionEvent.Processing
+                ) {
+                    Text("Facturar Ahora")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showInvoiceDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun DetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+        Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+    }
+}

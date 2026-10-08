@@ -4,7 +4,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.runtime.*
+import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -13,26 +15,35 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.authvex.balaxysefactura.core.auth.AuthPreferences
 import com.authvex.balaxysefactura.core.auth.SessionManager
-import com.authvex.balaxysefactura.core.network.*
+import com.authvex.balaxysefactura.core.network.AuthApi
+import com.authvex.balaxysefactura.core.network.BudgetApi
+import com.authvex.balaxysefactura.core.network.CfeApi
+import com.authvex.balaxysefactura.core.network.ReportsApi
+import com.authvex.balaxysefactura.core.network.RetrofitClient
+import com.authvex.balaxysefactura.core.repository.BudgetRepository
 import com.authvex.balaxysefactura.core.repository.CfeRepository
 import com.authvex.balaxysefactura.core.repository.ReportsRepository
 import com.authvex.balaxysefactura.ui.navigation.Screen
+import com.authvex.balaxysefactura.ui.screens.budget.detail.BudgetDetailScreen
+import com.authvex.balaxysefactura.ui.screens.budget.detail.BudgetDetailViewModel
+import com.authvex.balaxysefactura.ui.screens.budget.form.BudgetFormScreen
+import com.authvex.balaxysefactura.ui.screens.budget.form.BudgetFormViewModel
+import com.authvex.balaxysefactura.ui.screens.budget.list.BudgetListScreen
+import com.authvex.balaxysefactura.ui.screens.budget.list.BudgetListViewModel
 import com.authvex.balaxysefactura.ui.screens.cfe.detail.CfeDetailScreen
 import com.authvex.balaxysefactura.ui.screens.cfe.detail.CfeDetailViewModel
 import com.authvex.balaxysefactura.ui.screens.cfe.list.CfeListScreen
 import com.authvex.balaxysefactura.ui.screens.cfe.list.CfeListViewModel
 import com.authvex.balaxysefactura.ui.screens.devtools.DevToolsScreen
 import com.authvex.balaxysefactura.ui.screens.devtools.DevToolsViewModel
+import com.authvex.balaxysefactura.ui.screens.emission.EmissionScreen
+import com.authvex.balaxysefactura.ui.screens.emission.EmissionViewModel
 import com.authvex.balaxysefactura.ui.screens.home.HomeScreen
 import com.authvex.balaxysefactura.ui.screens.login.LoginScreen
 import com.authvex.balaxysefactura.ui.screens.login.LoginViewModel
-import com.authvex.balaxysefactura.ui.screens.emission.EmissionScreen
-import com.authvex.balaxysefactura.ui.screens.emission.EmissionViewModel
 import com.authvex.balaxysefactura.ui.screens.reports.ReportsScreen
 import com.authvex.balaxysefactura.ui.screens.reports.ReportsViewModel
 import com.authvex.balaxysefactura.ui.theme.BalaxysEfacturaTheme
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.runBlocking
 
@@ -45,9 +56,11 @@ class MainActivity : ComponentActivity() {
         val authApi = retrofitClient.create(AuthApi::class.java)
         val cfeApi = retrofitClient.create(CfeApi::class.java)
         val reportsApi = retrofitClient.create(ReportsApi::class.java)
+        val budgetApi = retrofitClient.create(BudgetApi::class.java)
         
         val cfeRepository = CfeRepository(cfeApi)
         val reportsRepository = ReportsRepository(reportsApi)
+        val budgetRepository = BudgetRepository(budgetApi)
 
         val startDestination = runBlocking {
             if (authPreferences.getAuthTokenSync() != null) Screen.Home.route else Screen.Login.route
@@ -106,6 +119,63 @@ class MainActivity : ComponentActivity() {
                             },
                             onViewReports = {
                                 navController.navigate(Screen.Reports.route)
+                            },
+                            onViewBudgets = {
+                                navController.navigate(Screen.Budgets.route)
+                            }
+                        )
+                    }
+                    composable(Screen.Budgets.route) {
+                        val factory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return BudgetListViewModel(budgetRepository) as T
+                            }
+                        }
+                        val listViewModel: BudgetListViewModel = viewModel(factory = factory)
+                        BudgetListScreen(
+                            viewModel = listViewModel,
+                            onNavigateBack = { navController.popBackStack() },
+                            onNavigateToDetail = { budgetId ->
+                                navController.navigate(Screen.BudgetDetail.createRoute(budgetId))
+                            },
+                            onNavigateToCreate = {
+                                navController.navigate(Screen.BudgetForm.route)
+                            }
+                        )
+                    }
+                    composable(
+                        route = Screen.BudgetDetail.route,
+                        arguments = listOf(navArgument("budgetId") { type = NavType.LongType })
+                    ) { backStackEntry ->
+                        val budgetId = backStackEntry.arguments?.getLong("budgetId") ?: 0L
+                        val factory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return BudgetDetailViewModel(budgetRepository, budgetId) as T
+                            }
+                        }
+                        val detailViewModel: BudgetDetailViewModel = viewModel(factory = factory)
+                        BudgetDetailScreen(
+                            viewModel = detailViewModel,
+                            onNavigateBack = { navController.popBackStack() }
+                        )
+                    }
+                    composable(Screen.BudgetForm.route) {
+                        val factory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return BudgetFormViewModel(budgetRepository, cfeRepository) as T
+                            }
+                        }
+                        val formViewModel: BudgetFormViewModel = viewModel(factory = factory)
+                        BudgetFormScreen(
+                            viewModel = formViewModel,
+                            onNavigateBack = { navController.popBackStack() },
+                            onBudgetCreated = { createdId ->
+                                navController.navigate(Screen.BudgetDetail.createRoute(createdId)) {
+                                    popUpTo(Screen.Budgets.route)
+                                }
                             }
                         )
                     }

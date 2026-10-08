@@ -7,8 +7,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -26,7 +27,8 @@ fun HomeScreen(
     onOpenDevTools: () -> Unit = {},
     onViewCfeList: () -> Unit = {},
     onEmitDocument: () -> Unit = {},
-    onViewReports: () -> Unit = {}
+    onViewReports: () -> Unit = {},
+    onViewBudgets: () -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -55,10 +57,10 @@ fun HomeScreen(
                 .background(MaterialTheme.colorScheme.background)
                 .padding(innerPadding)
                 .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Header Welcome
-            Column(modifier = Modifier.padding(bottom = 8.dp)) {
+            Column(modifier = Modifier.padding(bottom = 4.dp)) {
                 Text(
                     text = "Panel Principal",
                     style = MaterialTheme.typography.headlineMedium,
@@ -71,7 +73,7 @@ fun HomeScreen(
                 )
             }
 
-            // Quick Actions Grid
+            // Quick Actions Grid (2x2)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 ActionCard(
                     title = "Emitir",
@@ -91,14 +93,26 @@ fun HomeScreen(
                 )
             }
 
-            // Reports Card
-            ActionCardLong(
-                title = "Informes",
-                subtitle = "Analítica de Ventas",
-                icon = Icons.Default.BarChart,
-                color = Color(0xFF43A047),
-                onClick = onViewReports
-            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                ActionCard(
+                    title = "Presupuestos",
+                    subtitle = "Cotizaciones",
+                    icon = Icons.Default.Description,
+                    color = Color(0xFF0288D1),
+                    modifier = Modifier.weight(1f),
+                    onClick = onViewBudgets
+                )
+                ActionCard(
+                    title = "Informes",
+                    subtitle = "Analítica de Ventas",
+                    icon = Icons.Default.BarChart,
+                    color = Color(0xFF43A047),
+                    modifier = Modifier.weight(1f),
+                    onClick = onViewReports
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Info Card
             Card(
@@ -150,7 +164,7 @@ fun ActionCard(
 ) {
     Card(
         onClick = onClick,
-        modifier = modifier.height(160.dp),
+        modifier = modifier.height(150.dp),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -158,7 +172,7 @@ fun ActionCard(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(20.dp),
+                .padding(16.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Surface(
@@ -174,60 +188,13 @@ fun ActionCard(
             Column {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = subtitle,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ActionCardLong(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    color: Color,
-    onClick: () -> Unit
-) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth().height(100.dp),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                modifier = Modifier.size(56.dp),
-                shape = RoundedCornerShape(16.dp),
-                color = color.copy(alpha = 0.1f)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(32.dp))
-                }
-            }
-            Spacer(modifier = Modifier.width(20.dp))
-            Column {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                 )
             }
