@@ -66,8 +66,19 @@ data class TasaCambioSimpleDto(
 )
 
 @Serializable
+data class EmpresaContactoDto(
+    val direccion: String? = null,
+    val telefono: String? = null,
+    val email: String? = null
+)
+
+@Serializable
 data class EmpresaDto(
     val id: Int,
+    @SerialName("nombre")
+    val nombre: String = "",
+    val logo: String? = null,
+    val contacto: EmpresaContactoDto? = null,
     val moneda: CatalogoItemDto? = null
 )
 
