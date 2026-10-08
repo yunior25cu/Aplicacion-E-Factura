@@ -22,6 +22,7 @@ sealed class BudgetActionEvent {
     object Idle : BudgetActionEvent()
     object Processing : BudgetActionEvent()
     data class ConfirmedSuccess(val message: String) : BudgetActionEvent()
+    data class CancelledSuccess(val message: String) : BudgetActionEvent()
     data class InvoicedSuccess(val facturaId: Long, val message: String) : BudgetActionEvent()
     data class ActionError(val message: String) : BudgetActionEvent()
 }
@@ -94,6 +95,21 @@ class BudgetDetailViewModel(
             val result = budgetRepository.confirmBudget(budgetId)
             result.onSuccess {
                 actionEvent = BudgetActionEvent.ConfirmedSuccess("Presupuesto confirmado correctamente")
+                loadDetail()
+            }.onFailure { throwable ->
+                val appError = ErrorMapper.fromThrowable(throwable)
+                actionEvent = BudgetActionEvent.ActionError(appError.getDisplayMessage())
+            }
+        }
+    }
+
+    fun cancelBudget() {
+        if (actionEvent is BudgetActionEvent.Processing) return
+        actionEvent = BudgetActionEvent.Processing
+        viewModelScope.launch {
+            val result = budgetRepository.cancelBudget(budgetId)
+            result.onSuccess {
+                actionEvent = BudgetActionEvent.CancelledSuccess("Presupuesto anulado correctamente")
                 loadDetail()
             }.onFailure { throwable ->
                 val appError = ErrorMapper.fromThrowable(throwable)

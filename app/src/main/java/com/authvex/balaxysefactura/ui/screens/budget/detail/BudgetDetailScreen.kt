@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Receipt
@@ -34,12 +35,18 @@ fun BudgetDetailScreen(
     val uiState = viewModel.uiState
     val actionEvent = viewModel.actionEvent
     var showInvoiceDialog by remember { mutableStateOf(false) }
+    var showCancelDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(actionEvent) {
         when (actionEvent) {
             is BudgetActionEvent.ConfirmedSuccess -> {
                 Toast.makeText(context, actionEvent.message, Toast.LENGTH_LONG).show()
                 viewModel.resetActionEvent()
+            }
+            is BudgetActionEvent.CancelledSuccess -> {
+                Toast.makeText(context, actionEvent.message, Toast.LENGTH_LONG).show()
+                viewModel.resetActionEvent()
+                showCancelDialog = false
             }
             is BudgetActionEvent.InvoicedSuccess -> {
                 Toast.makeText(context, actionEvent.message, Toast.LENGTH_LONG).show()
@@ -275,27 +282,42 @@ fun BudgetDetailScreen(
                         // Primary Action Buttons
                         if (budget.factura == null) {
                             if (estadoEnum == BudgetEstado.SIN_CONFIRMAR) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    OutlinedButton(
-                                        onClick = { onNavigateToEdit(budget.id) },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(52.dp),
-                                        shape = RoundedCornerShape(12.dp)
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Icon(Icons.Default.Edit, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Editar", fontWeight = FontWeight.Bold)
+                                        OutlinedButton(
+                                            onClick = { onNavigateToEdit(budget.id) },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(48.dp),
+                                            shape = RoundedCornerShape(12.dp)
+                                        ) {
+                                            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Editar", fontWeight = FontWeight.Bold)
+                                        }
+
+                                        OutlinedButton(
+                                            onClick = { showCancelDialog = true },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(48.dp),
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                                        ) {
+                                            Icon(Icons.Default.Cancel, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Anular", fontWeight = FontWeight.Bold)
+                                        }
                                     }
 
                                     Button(
                                         onClick = { viewModel.confirmBudget() },
                                         modifier = Modifier
-                                            .weight(1f)
-                                            .height(52.dp),
+                                            .fillMaxWidth()
+                                            .height(48.dp),
                                         shape = RoundedCornerShape(12.dp),
                                         enabled = actionEvent !is BudgetActionEvent.Processing
                                     ) {
@@ -304,7 +326,7 @@ fun BudgetDetailScreen(
                                         } else {
                                             Icon(Icons.Default.CheckCircle, contentDescription = null)
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Confirmar", fontWeight = FontWeight.Bold)
+                                            Text("Confirmar Presupuesto", fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
@@ -337,6 +359,36 @@ fun BudgetDetailScreen(
         }
     }
 
+    // Cancel Confirmation Dialog
+    if (showCancelDialog) {
+        AlertDialog(
+            onDismissRequest = { showCancelDialog = false },
+            title = { Text("Anular presupuesto", fontWeight = FontWeight.Bold) },
+            text = {
+                Text("¿Desea anular este presupuesto? Esta acción no podrá deshacerse desde la aplicación.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.cancelBudget() },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    enabled = actionEvent !is BudgetActionEvent.Processing
+                ) {
+                    if (actionEvent is BudgetActionEvent.Processing) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White)
+                    } else {
+                        Text("Anular")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCancelDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
+    // Invoicing Dialog
     if (showInvoiceDialog) {
         val options = viewModel.invoiceOptions
         AlertDialog(
