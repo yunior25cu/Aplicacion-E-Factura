@@ -158,7 +158,10 @@ class MainActivity : ComponentActivity() {
                         val detailViewModel: BudgetDetailViewModel = viewModel(factory = factory)
                         BudgetDetailScreen(
                             viewModel = detailViewModel,
-                            onNavigateBack = { navController.popBackStack() }
+                            onNavigateBack = { navController.popBackStack() },
+                            onNavigateToEdit = { editId ->
+                                navController.navigate(Screen.BudgetEdit.createRoute(editId))
+                            }
                         )
                     }
                     composable(Screen.BudgetForm.route) {
@@ -172,8 +175,31 @@ class MainActivity : ComponentActivity() {
                         BudgetFormScreen(
                             viewModel = formViewModel,
                             onNavigateBack = { navController.popBackStack() },
-                            onBudgetCreated = { createdId ->
+                            onBudgetSaved = { createdId ->
                                 navController.navigate(Screen.BudgetDetail.createRoute(createdId)) {
+                                    popUpTo(Screen.Budgets.route)
+                                }
+                            }
+                        )
+                    }
+                    composable(
+                        route = Screen.BudgetEdit.route,
+                        arguments = listOf(navArgument("budgetId") { type = NavType.LongType })
+                    ) { backStackEntry ->
+                        val editBudgetId = backStackEntry.arguments?.getLong("budgetId") ?: 0L
+                        val factory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return BudgetFormViewModel(budgetRepository, cfeRepository) as T
+                            }
+                        }
+                        val formViewModel: BudgetFormViewModel = viewModel(factory = factory)
+                        BudgetFormScreen(
+                            viewModel = formViewModel,
+                            budgetIdToEdit = editBudgetId,
+                            onNavigateBack = { navController.popBackStack() },
+                            onBudgetSaved = { savedId ->
+                                navController.navigate(Screen.BudgetDetail.createRoute(savedId)) {
                                     popUpTo(Screen.Budgets.route)
                                 }
                             }

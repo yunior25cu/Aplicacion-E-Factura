@@ -25,10 +25,15 @@ data class BudgetDto(
     val iva: Double? = null,
     val descuento: Double = 0.0,
     val importeTotalBase: Double? = null,
+    val ajusteRedondeoBase: Double = 0.0,
     val importeOriginal: Double? = null,
     val ivaOriginal: Double? = null,
     val descuentoOriginal: Double = 0.0,
+    val tipoDescuentoGlobal: Int? = null,
+    val valorDescuentoGlobal: Double? = null,
     val importeTotalOriginal: Double? = null,
+    val ajusteRedondeoOriginal: Double = 0.0,
+    val preciosIncluyenIva: Boolean = true,
     val esElectronico: Boolean = false,
     val estado: Int = 1, // 1: SinConfirmar, 2: Confirmado, 3: Anulado, 4: Cancelado
     val moneda: CatalogoItemDto? = null,
@@ -54,6 +59,7 @@ data class BudgetFacturaDto(
 data class BudgetDocumentProductDto(
     val id: Long = 0,
     val idProducto: Long? = null,
+    val idSkuVariante: Long? = null,
     val cantidad: Double = 0.0,
     val descuento: Double = 0.0,
     val precioBase: Double = 0.0,
@@ -71,6 +77,9 @@ data class BudgetDocumentProductDto(
     val descripcion: String? = null,
     val um: String? = null,
     val porcentajeIva: Double? = null,
+    val indicadorFacturacionC4: Int? = null,
+    val idPromocionSugerida: Long? = null,
+    val descuentoManual: Boolean = false,
     val producto: ProductoDto? = null
 )
 
@@ -116,6 +125,58 @@ data class BudgetDocumentProductCreateDto(
     val importeOriginal: Double,
     val precioOriginalConIva: Double,
     val importeOriginalConIva: Double
+)
+
+@Serializable
+data class BudgetUpdateDto(
+    val id: Long,
+    val fechaEmision: String,
+    val fechaConfirmacion: String,
+    val fechaVencimiento: String,
+    val numeroReferencia: String? = null,
+    val nota: String? = null,
+    val terminoCondiciones: String? = null,
+    val idMoneda: Long,
+    val tasaCambio: Double,
+    val importeBase: Double,
+    val iva: Double,
+    val descuento: Double = 0.0,
+    val importeTotalBase: Double,
+    val ajusteRedondeoBase: Double? = null,
+    val importeOriginal: Double,
+    val ivaOriginal: Double,
+    val descuentoOriginal: Double = 0.0,
+    val tipoDescuentoGlobal: Int? = null,
+    val valorDescuentoGlobal: Double? = null,
+    val importeTotalOriginal: Double,
+    val ajusteRedondeoOriginal: Double? = null,
+    val idAlmacen: Long,
+    val idCliente: Long,
+    val idCentroCosto: Long? = null,
+    val preciosIncluyenIva: Boolean? = true,
+    val documentoProductos: List<BudgetDocumentProductUpdateDto>
+)
+
+@Serializable
+data class BudgetDocumentProductUpdateDto(
+    val idProducto: Long,
+    val idSkuVariante: Long? = null,
+    val cantidad: Double,
+    val precioBase: Double,
+    val importeBase: Double,
+    val iva: Double,
+    val descuento: Double = 0.0,
+    val ivaOriginal: Double,
+    val descuentoOriginal: Double = 0.0,
+    val precioBaseConIva: Double,
+    val importeBaseConIva: Double,
+    val precioOriginal: Double,
+    val importeOriginal: Double,
+    val precioOriginalConIva: Double,
+    val importeOriginalConIva: Double,
+    val indicadorFacturacionC4: Int? = null,
+    val idPromocionSugerida: Long? = null,
+    val descuentoManual: Boolean = false
 )
 
 @Serializable

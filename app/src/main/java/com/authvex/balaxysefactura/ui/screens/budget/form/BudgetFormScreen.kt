@@ -34,8 +34,9 @@ import java.util.Locale
 @Composable
 fun BudgetFormScreen(
     viewModel: BudgetFormViewModel,
+    budgetIdToEdit: Long? = null,
     onNavigateBack: () -> Unit,
-    onBudgetCreated: (Long) -> Unit
+    onBudgetSaved: (Long) -> Unit
 ) {
     val context = LocalContext.current
     val uiState = viewModel.uiState
@@ -43,10 +44,17 @@ fun BudgetFormScreen(
     var showClientDialog by remember { mutableStateOf(false) }
     var showProductDialog by remember { mutableStateOf(false) }
 
+    LaunchedEffect(budgetIdToEdit) {
+        if (budgetIdToEdit != null && budgetIdToEdit > 0) {
+            viewModel.loadBudgetForEdit(budgetIdToEdit)
+        }
+    }
+
     LaunchedEffect(uiState) {
         if (uiState is BudgetFormUiState.Success) {
-            Toast.makeText(context, "Presupuesto guardado correctamente", Toast.LENGTH_SHORT).show()
-            onBudgetCreated(uiState.budgetId)
+            val msg = if (uiState.isEdit) "Presupuesto actualizado correctamente" else "Presupuesto guardado correctamente"
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            onBudgetSaved(uiState.budgetId)
             viewModel.resetState()
         } else if (uiState is BudgetFormUiState.Error) {
             Toast.makeText(context, uiState.message, Toast.LENGTH_LONG).show()
@@ -57,7 +65,9 @@ fun BudgetFormScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Nuevo Presupuesto") },
+                title = {
+                    Text(if (viewModel.formMode == BudgetFormMode.EDIT) "Editar Presupuesto" else "Nuevo Presupuesto")
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Regresar")
@@ -258,7 +268,7 @@ fun BudgetFormScreen(
                 }
             }
 
-            // Save Button
+            // Save / Update Button
             Button(
                 onClick = { viewModel.submitForm() },
                 modifier = Modifier
@@ -270,7 +280,10 @@ fun BudgetFormScreen(
                 if (uiState is BudgetFormUiState.Loading) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
                 } else {
-                    Text("Guardar Presupuesto", fontWeight = FontWeight.Bold)
+                    Text(
+                        text = if (viewModel.formMode == BudgetFormMode.EDIT) "Guardar Cambios" else "Guardar Presupuesto",
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }

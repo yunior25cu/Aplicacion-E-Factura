@@ -56,6 +56,15 @@ class BudgetRepository(private val budgetApi: BudgetApi) {
         }
     }
 
+    suspend fun updateBudget(dto: com.authvex.balaxysefactura.core.network.BudgetUpdateDto): Result<Unit> {
+        return try {
+            budgetApi.updateBudget(dto)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun confirmBudget(id: Long): Result<Unit> {
         return try {
             budgetApi.confirmBudget(id)

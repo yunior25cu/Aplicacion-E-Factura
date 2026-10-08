@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,7 +27,8 @@ import java.util.Locale
 @Composable
 fun BudgetDetailScreen(
     viewModel: BudgetDetailViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToEdit: (Long) -> Unit = {}
 ) {
     val context = LocalContext.current
     val uiState = viewModel.uiState
@@ -273,20 +275,37 @@ fun BudgetDetailScreen(
                         // Primary Action Buttons
                         if (budget.factura == null) {
                             if (estadoEnum == BudgetEstado.SIN_CONFIRMAR) {
-                                Button(
-                                    onClick = { viewModel.confirmBudget() },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(52.dp),
-                                    shape = RoundedCornerShape(12.dp),
-                                    enabled = actionEvent !is BudgetActionEvent.Processing
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    if (actionEvent is BudgetActionEvent.Processing) {
-                                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
-                                    } else {
-                                        Icon(Icons.Default.CheckCircle, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Confirmar Presupuesto", fontWeight = FontWeight.Bold)
+                                    OutlinedButton(
+                                        onClick = { onNavigateToEdit(budget.id) },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(52.dp),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Editar", fontWeight = FontWeight.Bold)
+                                    }
+
+                                    Button(
+                                        onClick = { viewModel.confirmBudget() },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(52.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        enabled = actionEvent !is BudgetActionEvent.Processing
+                                    ) {
+                                        if (actionEvent is BudgetActionEvent.Processing) {
+                                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                                        } else {
+                                            Icon(Icons.Default.CheckCircle, contentDescription = null)
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Confirmar", fontWeight = FontWeight.Bold)
+                                        }
                                     }
                                 }
                             } else if (estadoEnum == BudgetEstado.CONFIRMADO) {

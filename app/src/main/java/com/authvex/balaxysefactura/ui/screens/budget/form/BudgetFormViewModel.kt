@@ -16,17 +16,27 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+enum class BudgetFormMode {
+    CREATE,
+    EDIT
+}
+
 data class BudgetFormLineItem(
     val producto: ProductoDto,
+    var idSkuVariante: Long? = null,
+    var indicadorFacturacionC4: Int? = null,
+    var idPromocionSugerida: Long? = null,
+    var descuentoManual: Boolean = false,
     var cantidad: Double = 1.0,
     var precioUnitario: Double = producto.precio ?: 0.0,
-    var descuento: Double = 0.0
+    var descuento: Double = 0.0,
+    val originalDocProductSnapshot: BudgetDocumentProductDto? = null
 )
 
 sealed class BudgetFormUiState {
     object Idle : BudgetFormUiState()
     object Loading : BudgetFormUiState()
-    data class Success(val budgetId: Long) : BudgetFormUiState()
+    data class Success(val budgetId: Long, val isEdit: Boolean = false) : BudgetFormUiState()
     data class Error(val message: String) : BudgetFormUiState()
 }
 
@@ -37,6 +47,10 @@ class BudgetFormViewModel(
 
     var uiState by mutableStateOf<BudgetFormUiState>(BudgetFormUiState.Idle)
         private set
+
+    var formMode by mutableStateOf(BudgetFormMode.CREATE)
+    var editingBudgetId by mutableStateOf<Long?>(null)
+    var originalBudgetSnapshot by mutableStateOf<BudgetDto?>(null)
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
@@ -97,18 +111,119 @@ class BudgetFormViewModel(
             cfeRepository.getClientes().onSuccess { clientesList = it }
             cfeRepository.getAlmacenes().onSuccess {
                 almacenesList = it
-                if (it.isNotEmpty() && selectedAlmacen == null) {
+                if (it.isNotEmpty() && selectedAlmacen == null && formMode == BudgetFormMode.CREATE) {
                     selectedAlmacen = it.first()
                 }
             }
 
             cfeRepository.getTasaCambios(fechaConfirmacion).onSuccess { tasas ->
                 tasasCambioList = tasas
-                resolveSelectedMoneda(tasas)
+                if (formMode == BudgetFormMode.CREATE) {
+                    resolveSelectedMoneda(tasas)
+                }
             }
 
             cfeRepository.getProductos().onSuccess { productosList = it }
             isCatalogsLoading = false
+        }
+    }
+
+    fun loadBudgetForEdit(budgetId: Long) {
+        viewModelScope.launch {
+            uiState = BudgetFormUiState.Loading
+
+            cfeRepository.getEmpresa().onSuccess { empresa ->
+                companyBaseCurrencyId = empresa.moneda?.id
+            }
+
+            val result = budgetRepository.getBudgetById(budgetId)
+            result.onSuccess { budget ->
+                if (budget.estado != BudgetEstado.SIN_CONFIRMAR.code || budget.factura != null) {
+                    uiState = BudgetFormUiState.Error("Este presupuesto no puede ser editado porque ya no se encuentra en estado Sin Confirmar o ya fue facturado.")
+                    return@launch
+                }
+
+                formMode = BudgetFormMode.EDIT
+                editingBudgetId = budgetId
+                originalBudgetSnapshot = budget
+
+                // Pre-populate exact form values
+                fechaEmision = budget.fechaEmision.take(10)
+                fechaConfirmacion = (budget.fechaConfirmacion ?: budget.fechaEmision).take(10)
+                fechaVencimiento = budget.fechaVencimiento.take(10)
+
+                selectedCliente = budget.cliente
+                selectedAlmacen = budget.almacen
+                preciosIncluyenIva = budget.preciosIncluyenIva
+
+                numeroReferencia = budget.numeroReferencia ?: ""
+                nota = budget.nota ?: ""
+                terminoCondiciones = budget.terminoCondiciones ?: ""
+
+                val budgetMoneda = budget.moneda
+                if (budgetMoneda != null) {
+                    val tasaItem = TasaCambioSimpleDto(
+                        id = budgetMoneda.id,
+                        codigo = budgetMoneda.codigo ?: "UYU",
+                        denominacion = budgetMoneda.nombre,
+                        simbolo = "$",
+                        decimales = 2,
+                        tasaPromedio = budget.tasaCambio
+                    )
+                    selectedMoneda = tasaItem
+                    tasaCambio = budget.tasaCambio
+                }
+
+                val isBaseCurrency = companyBaseCurrencyId == null || (budget.moneda?.id == companyBaseCurrencyId)
+
+                val convertedLines = budget.documentoProductos.map { docProd ->
+                    val lineUnitPrice = if (isBaseCurrency) {
+                        if (budget.preciosIncluyenIva && (docProd.precioBaseConIva ?: 0.0) > 0) {
+                            docProd.precioBaseConIva!!
+                        } else {
+                            docProd.precioBase
+                        }
+                    } else {
+                        if (budget.preciosIncluyenIva && (docProd.precioOriginalConIva ?: 0.0) > 0) {
+                            docProd.precioOriginalConIva!!
+                        } else {
+                            if ((docProd.precioOriginal) > 0) docProd.precioOriginal else docProd.precioBase
+                        }
+                    }
+
+                    val lineDiscount = if (isBaseCurrency) {
+                        docProd.descuento
+                    } else {
+                        docProd.descuentoOriginal ?: docProd.descuento
+                    }
+
+                    val prod = docProd.producto ?: ProductoDto(
+                        id = docProd.idProducto?.toInt() ?: 0,
+                        nombre = docProd.descripcion ?: "Producto",
+                        codigo = docProd.codigo,
+                        precio = lineUnitPrice,
+                        tasaIva = docProd.porcentajeIva
+                    )
+
+                    BudgetFormLineItem(
+                        producto = prod,
+                        idSkuVariante = docProd.idSkuVariante,
+                        indicadorFacturacionC4 = docProd.indicadorFacturacionC4,
+                        idPromocionSugerida = docProd.idPromocionSugerida,
+                        descuentoManual = docProd.descuentoManual,
+                        cantidad = docProd.cantidad,
+                        precioUnitario = lineUnitPrice,
+                        descuento = lineDiscount,
+                        originalDocProductSnapshot = docProd
+                    )
+                }
+                lineItems.value = convertedLines
+
+                uiState = BudgetFormUiState.Idle
+            }.onFailure { throwable ->
+                val appError = ErrorMapper.fromThrowable(throwable)
+                uiState = BudgetFormUiState.Error(appError.getDisplayMessage())
+            }
         }
     }
 
@@ -163,6 +278,18 @@ class BudgetFormViewModel(
         selectedMoneda = moneda
         val isBase = companyBaseCurrencyId != null && moneda.id == companyBaseCurrencyId
         tasaCambio = if (isBase) 1.0 else (if (moneda.tasaPromedio > 0) moneda.tasaPromedio else 1.0)
+    }
+
+    fun addLineItem(producto: ProductoDto, cantidad: Double = 1.0, precioUnitario: Double = producto.precio ?: 0.0) {
+        val currentList = lineItems.value.toMutableList()
+        val existingIndex = currentList.indexOfFirst { it.producto.id == producto.id }
+        if (existingIndex >= 0) {
+            val item = currentList[existingIndex]
+            currentList[existingIndex] = item.copy(cantidad = item.cantidad + cantidad, precioUnitario = precioUnitario)
+        } else {
+            currentList.add(BudgetFormLineItem(producto = producto, cantidad = cantidad, precioUnitario = precioUnitario))
+        }
+        lineItems.value = currentList
     }
 
     // Line Configuration
@@ -231,8 +358,8 @@ class BudgetFormViewModel(
     fun calculateSubtotal(): Double {
         return lineItems.value.sumOf { item ->
             val totalLine = item.cantidad * item.precioUnitario - item.descuento
-            val taxRate = item.producto.tasaIva ?: 0.22
-            if (preciosIncluyenIva) {
+            val taxRate = item.producto.effectiveTaxRate
+            if (preciosIncluyenIva && taxRate > 0) {
                 totalLine / (1 + taxRate)
             } else {
                 totalLine
@@ -243,8 +370,10 @@ class BudgetFormViewModel(
     fun calculateIva(): Double {
         return lineItems.value.sumOf { item ->
             val totalLine = item.cantidad * item.precioUnitario - item.descuento
-            val taxRate = item.producto.tasaIva ?: 0.22
-            if (preciosIncluyenIva) {
+            val taxRate = item.producto.effectiveTaxRate
+            if (taxRate == 0.0) {
+                0.0
+            } else if (preciosIncluyenIva) {
                 totalLine - (totalLine / (1 + taxRate))
             } else {
                 totalLine * taxRate
@@ -277,53 +406,20 @@ class BudgetFormViewModel(
             return
         }
 
+        // Defensive Safety Guard: Prevent silent data corruption in EDIT mode
+        if (formMode == BudgetFormMode.EDIT) {
+            val originalTotal = originalBudgetSnapshot?.importeTotalBase ?: originalBudgetSnapshot?.importeTotalOriginal ?: 0.0
+            if (originalTotal > 0.0 && calculateTotal() == 0.0) {
+                uiState = BudgetFormUiState.Error("Error de validación: Se detectó un total cero inesperado durante la edición. Por favor verifique las líneas antes de guardar.")
+                return
+            }
+        }
+
         viewModelScope.launch {
             uiState = BudgetFormUiState.Loading
 
             val isBaseCurrency = companyBaseCurrencyId != null && moneda.id == companyBaseCurrencyId
             val rate = if (isBaseCurrency) 1.0 else (if (tasaCambio > 0) tasaCambio else 1.0)
-
-            val documentProducts = lineItems.value.map { item ->
-                val taxRate = item.producto.tasaIva ?: 0.22
-                val lineTotalInput = item.cantidad * item.precioUnitario - item.descuento
-
-                val lineSubtotalDocCurrency: Double
-                val lineIvaDocCurrency: Double
-                val lineTotalWithIvaDocCurrency: Double
-
-                if (preciosIncluyenIva) {
-                    lineTotalWithIvaDocCurrency = lineTotalInput
-                    lineSubtotalDocCurrency = lineTotalInput / (1 + taxRate)
-                    lineIvaDocCurrency = lineTotalInput - lineSubtotalDocCurrency
-                } else {
-                    lineSubtotalDocCurrency = lineTotalInput
-                    lineIvaDocCurrency = lineTotalInput * taxRate
-                    lineTotalWithIvaDocCurrency = lineSubtotalDocCurrency + lineIvaDocCurrency
-                }
-
-                val precioBase = if (isBaseCurrency) item.precioUnitario else item.precioUnitario * rate
-                val importeBase = if (isBaseCurrency) lineSubtotalDocCurrency else lineSubtotalDocCurrency * rate
-                val ivaBase = if (isBaseCurrency) lineIvaDocCurrency else lineIvaDocCurrency * rate
-                val precioBaseConIva = if (isBaseCurrency) (if (preciosIncluyenIva) item.precioUnitario else item.precioUnitario * (1 + taxRate)) else (if (preciosIncluyenIva) item.precioUnitario else item.precioUnitario * (1 + taxRate)) * rate
-                val importeBaseConIva = if (isBaseCurrency) lineTotalWithIvaDocCurrency else lineTotalWithIvaDocCurrency * rate
-
-                BudgetDocumentProductCreateDto(
-                    idProducto = item.producto.id.toLong(),
-                    cantidad = item.cantidad,
-                    precioBase = precioBase,
-                    importeBase = importeBase,
-                    iva = ivaBase,
-                    descuento = if (isBaseCurrency) item.descuento else item.descuento * rate,
-                    ivaOriginal = if (isBaseCurrency) 0.0 else lineIvaDocCurrency,
-                    descuentoOriginal = if (isBaseCurrency) 0.0 else item.descuento,
-                    precioBaseConIva = precioBaseConIva,
-                    importeBaseConIva = importeBaseConIva,
-                    precioOriginal = if (isBaseCurrency) 0.0 else item.precioUnitario,
-                    importeOriginal = if (isBaseCurrency) 0.0 else lineSubtotalDocCurrency,
-                    precioOriginalConIva = if (isBaseCurrency) 0.0 else (if (preciosIncluyenIva) item.precioUnitario else item.precioUnitario * (1 + taxRate)),
-                    importeOriginalConIva = if (isBaseCurrency) 0.0 else lineTotalWithIvaDocCurrency
-                )
-            }
 
             val calculatedSubtotal = calculateSubtotal()
             val calculatedIva = calculateIva()
@@ -333,37 +429,188 @@ class BudgetFormViewModel(
             val ivaBase = if (isBaseCurrency) calculatedIva else calculatedIva * rate
             val totalBase = if (isBaseCurrency) calculatedTotal else calculatedTotal * rate
 
-            val dto = BudgetCreateDto(
-                fechaEmision = fechaEmision,
-                fechaConfirmacion = fechaConfirmacion,
-                fechaVencimiento = fechaVencimiento,
-                numeroReferencia = numeroReferencia.takeIf { it.isNotBlank() },
-                nota = nota.takeIf { it.isNotBlank() },
-                terminoCondiciones = terminoCondiciones.takeIf { it.isNotBlank() },
-                preciosIncluyenIva = preciosIncluyenIva,
-                esElectronico = false,
-                idMoneda = moneda.id.toLong(),
-                tasaCambio = rate,
-                importeBase = subtotalBase,
-                iva = ivaBase,
-                descuento = 0.0,
-                importeTotalBase = totalBase,
-                importeOriginal = if (isBaseCurrency) 0.0 else calculatedSubtotal,
-                ivaOriginal = if (isBaseCurrency) 0.0 else calculatedIva,
-                descuentoOriginal = 0.0,
-                importeTotalOriginal = if (isBaseCurrency) 0.0 else calculatedTotal,
-                idAlmacen = almacen.id.toLong(),
-                idCliente = cliente.id.toLong(),
-                idCentroCosto = null,
-                documentoProductos = documentProducts
-            )
+            if (formMode == BudgetFormMode.CREATE) {
+                val createDocumentProducts = lineItems.value.map { item ->
+                    val taxRate = item.producto.effectiveTaxRate
+                    val lineTotalInput = item.cantidad * item.precioUnitario - item.descuento
 
-            val result = budgetRepository.createBudget(dto)
-            result.onSuccess { createdId ->
-                uiState = BudgetFormUiState.Success(createdId)
-            }.onFailure { throwable ->
-                val appError = ErrorMapper.fromThrowable(throwable)
-                uiState = BudgetFormUiState.Error(appError.getDisplayMessage())
+                    val lineSubtotalDocCurrency: Double
+                    val lineIvaDocCurrency: Double
+                    val lineTotalWithIvaDocCurrency: Double
+
+                    if (taxRate == 0.0) {
+                        lineSubtotalDocCurrency = lineTotalInput
+                        lineIvaDocCurrency = 0.0
+                        lineTotalWithIvaDocCurrency = lineTotalInput
+                    } else if (preciosIncluyenIva) {
+                        lineTotalWithIvaDocCurrency = lineTotalInput
+                        lineSubtotalDocCurrency = lineTotalInput / (1 + taxRate)
+                        lineIvaDocCurrency = lineTotalInput - lineSubtotalDocCurrency
+                    } else {
+                        lineSubtotalDocCurrency = lineTotalInput
+                        lineIvaDocCurrency = lineTotalInput * taxRate
+                        lineTotalWithIvaDocCurrency = lineSubtotalDocCurrency + lineIvaDocCurrency
+                    }
+
+                    val precioBase = if (isBaseCurrency) item.precioUnitario else item.precioUnitario * rate
+                    val importeBase = if (isBaseCurrency) lineSubtotalDocCurrency else lineSubtotalDocCurrency * rate
+                    val ivaBaseLine = if (isBaseCurrency) lineIvaDocCurrency else lineIvaDocCurrency * rate
+
+                    val precioBaseConIva = if (isBaseCurrency) {
+                        if (taxRate == 0.0 || preciosIncluyenIva) item.precioUnitario else item.precioUnitario * (1 + taxRate)
+                    } else {
+                        (if (taxRate == 0.0 || preciosIncluyenIva) item.precioUnitario else item.precioUnitario * (1 + taxRate)) * rate
+                    }
+
+                    val importeBaseConIva = if (isBaseCurrency) lineTotalWithIvaDocCurrency else lineTotalWithIvaDocCurrency * rate
+
+                    BudgetDocumentProductCreateDto(
+                        idProducto = item.producto.id.toLong(),
+                        cantidad = item.cantidad,
+                        precioBase = precioBase,
+                        importeBase = importeBase,
+                        iva = ivaBaseLine,
+                        descuento = if (isBaseCurrency) item.descuento else item.descuento * rate,
+                        ivaOriginal = if (isBaseCurrency) 0.0 else lineIvaDocCurrency,
+                        descuentoOriginal = if (isBaseCurrency) 0.0 else item.descuento,
+                        precioBaseConIva = precioBaseConIva,
+                        importeBaseConIva = importeBaseConIva,
+                        precioOriginal = if (isBaseCurrency) 0.0 else item.precioUnitario,
+                        importeOriginal = if (isBaseCurrency) 0.0 else lineSubtotalDocCurrency,
+                        precioOriginalConIva = if (isBaseCurrency) 0.0 else (if (taxRate == 0.0 || preciosIncluyenIva) item.precioUnitario else item.precioUnitario * (1 + taxRate)),
+                        importeOriginalConIva = if (isBaseCurrency) 0.0 else lineTotalWithIvaDocCurrency
+                    )
+                }
+
+                val createDto = BudgetCreateDto(
+                    fechaEmision = fechaEmision,
+                    fechaConfirmacion = fechaConfirmacion,
+                    fechaVencimiento = fechaVencimiento,
+                    numeroReferencia = numeroReferencia.takeIf { it.isNotBlank() },
+                    nota = nota.takeIf { it.isNotBlank() },
+                    terminoCondiciones = terminoCondiciones.takeIf { it.isNotBlank() },
+                    preciosIncluyenIva = preciosIncluyenIva,
+                    esElectronico = false,
+                    idMoneda = moneda.id.toLong(),
+                    tasaCambio = rate,
+                    importeBase = subtotalBase,
+                    iva = ivaBase,
+                    descuento = 0.0,
+                    importeTotalBase = totalBase,
+                    importeOriginal = if (isBaseCurrency) 0.0 else calculatedSubtotal,
+                    ivaOriginal = if (isBaseCurrency) 0.0 else calculatedIva,
+                    descuentoOriginal = 0.0,
+                    importeTotalOriginal = if (isBaseCurrency) 0.0 else calculatedTotal,
+                    idAlmacen = almacen.id.toLong(),
+                    idCliente = cliente.id.toLong(),
+                    idCentroCosto = null,
+                    documentoProductos = createDocumentProducts
+                )
+
+                val result = budgetRepository.createBudget(createDto)
+                result.onSuccess { createdId ->
+                    uiState = BudgetFormUiState.Success(createdId, isEdit = false)
+                }.onFailure { throwable ->
+                    val appError = ErrorMapper.fromThrowable(throwable)
+                    uiState = BudgetFormUiState.Error(appError.getDisplayMessage())
+                }
+            } else {
+                // EDIT mode -> Build BudgetUpdateDto
+                val updateBudgetId = editingBudgetId ?: return@launch
+                val snapshot = originalBudgetSnapshot
+
+                val updateDocumentProducts = lineItems.value.map { item ->
+                    val taxRate = item.producto.effectiveTaxRate
+                    val lineTotalInput = item.cantidad * item.precioUnitario - item.descuento
+
+                    val lineSubtotalDocCurrency: Double
+                    val lineIvaDocCurrency: Double
+                    val lineTotalWithIvaDocCurrency: Double
+
+                    if (taxRate == 0.0) {
+                        lineSubtotalDocCurrency = lineTotalInput
+                        lineIvaDocCurrency = 0.0
+                        lineTotalWithIvaDocCurrency = lineTotalInput
+                    } else if (preciosIncluyenIva) {
+                        lineTotalWithIvaDocCurrency = lineTotalInput
+                        lineSubtotalDocCurrency = lineTotalInput / (1 + taxRate)
+                        lineIvaDocCurrency = lineTotalInput - lineSubtotalDocCurrency
+                    } else {
+                        lineSubtotalDocCurrency = lineTotalInput
+                        lineIvaDocCurrency = lineTotalInput * taxRate
+                        lineTotalWithIvaDocCurrency = lineSubtotalDocCurrency + lineIvaDocCurrency
+                    }
+
+                    val precioBase = if (isBaseCurrency) item.precioUnitario else item.precioUnitario * rate
+                    val importeBase = if (isBaseCurrency) lineSubtotalDocCurrency else lineSubtotalDocCurrency * rate
+                    val ivaBaseLine = if (isBaseCurrency) lineIvaDocCurrency else lineIvaDocCurrency * rate
+
+                    val precioBaseConIva = if (isBaseCurrency) {
+                        if (taxRate == 0.0 || preciosIncluyenIva) item.precioUnitario else item.precioUnitario * (1 + taxRate)
+                    } else {
+                        (if (taxRate == 0.0 || preciosIncluyenIva) item.precioUnitario else item.precioUnitario * (1 + taxRate)) * rate
+                    }
+
+                    val importeBaseConIva = if (isBaseCurrency) lineTotalWithIvaDocCurrency else lineTotalWithIvaDocCurrency * rate
+
+                    BudgetDocumentProductUpdateDto(
+                        idProducto = item.producto.id.toLong(),
+                        idSkuVariante = item.idSkuVariante,
+                        cantidad = item.cantidad,
+                        precioBase = precioBase,
+                        importeBase = importeBase,
+                        iva = ivaBaseLine,
+                        descuento = if (isBaseCurrency) item.descuento else item.descuento * rate,
+                        ivaOriginal = if (isBaseCurrency) 0.0 else lineIvaDocCurrency,
+                        descuentoOriginal = if (isBaseCurrency) 0.0 else item.descuento,
+                        precioBaseConIva = precioBaseConIva,
+                        importeBaseConIva = importeBaseConIva,
+                        precioOriginal = if (isBaseCurrency) 0.0 else item.precioUnitario,
+                        importeOriginal = if (isBaseCurrency) 0.0 else lineSubtotalDocCurrency,
+                        precioOriginalConIva = if (isBaseCurrency) 0.0 else (if (taxRate == 0.0 || preciosIncluyenIva) item.precioUnitario else item.precioUnitario * (1 + taxRate)),
+                        importeOriginalConIva = if (isBaseCurrency) 0.0 else lineTotalWithIvaDocCurrency,
+                        indicadorFacturacionC4 = item.indicadorFacturacionC4,
+                        idPromocionSugerida = item.idPromocionSugerida,
+                        descuentoManual = item.descuentoManual
+                    )
+                }
+
+                val updateDto = BudgetUpdateDto(
+                    id = updateBudgetId,
+                    fechaEmision = fechaEmision,
+                    fechaConfirmacion = fechaConfirmacion,
+                    fechaVencimiento = fechaVencimiento,
+                    numeroReferencia = numeroReferencia.takeIf { it.isNotBlank() },
+                    nota = nota.takeIf { it.isNotBlank() },
+                    terminoCondiciones = terminoCondiciones.takeIf { it.isNotBlank() },
+                    idMoneda = moneda.id.toLong(),
+                    tasaCambio = rate,
+                    importeBase = subtotalBase,
+                    iva = ivaBase,
+                    descuento = 0.0,
+                    importeTotalBase = totalBase,
+                    ajusteRedondeoBase = snapshot?.ajusteRedondeoBase,
+                    importeOriginal = if (isBaseCurrency) 0.0 else calculatedSubtotal,
+                    ivaOriginal = if (isBaseCurrency) 0.0 else calculatedIva,
+                    descuentoOriginal = 0.0,
+                    tipoDescuentoGlobal = snapshot?.tipoDescuentoGlobal,
+                    valorDescuentoGlobal = snapshot?.valorDescuentoGlobal,
+                    importeTotalOriginal = if (isBaseCurrency) 0.0 else calculatedTotal,
+                    ajusteRedondeoOriginal = snapshot?.ajusteRedondeoOriginal,
+                    idAlmacen = almacen.id.toLong(),
+                    idCliente = cliente.id.toLong(),
+                    idCentroCosto = snapshot?.centroCosto?.id?.toLong(),
+                    preciosIncluyenIva = preciosIncluyenIva,
+                    documentoProductos = updateDocumentProducts
+                )
+
+                val result = budgetRepository.updateBudget(updateDto)
+                result.onSuccess {
+                    uiState = BudgetFormUiState.Success(updateBudgetId, isEdit = true)
+                }.onFailure { throwable ->
+                    val appError = ErrorMapper.fromThrowable(throwable)
+                    uiState = BudgetFormUiState.Error(appError.getDisplayMessage())
+                }
             }
         }
     }

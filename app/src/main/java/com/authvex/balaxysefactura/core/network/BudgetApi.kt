@@ -19,7 +19,7 @@ interface BudgetApi {
     suspend fun createBudget(@Body dto: BudgetCreateDto): Long
 
     @PUT("PreFactura")
-    suspend fun updateBudget(@Body dto: BudgetCreateDto)
+    suspend fun updateBudget(@Body dto: BudgetUpdateDto)
 
     @PUT("PreFactura/confirmar/{id}")
     suspend fun confirmBudget(@Path("id") id: Long)

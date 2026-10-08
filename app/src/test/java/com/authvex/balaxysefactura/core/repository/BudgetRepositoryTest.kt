@@ -3,12 +3,14 @@ package com.authvex.balaxysefactura.core.repository
 import com.authvex.balaxysefactura.core.network.BudgetApi
 import com.authvex.balaxysefactura.core.network.BudgetCreateDto
 import com.authvex.balaxysefactura.core.network.BudgetDocumentProductCreateDto
+import com.authvex.balaxysefactura.core.network.BudgetDocumentProductUpdateDto
 import com.authvex.balaxysefactura.core.network.BudgetDto
 import com.authvex.balaxysefactura.core.network.BudgetFacturarDto
 import com.authvex.balaxysefactura.core.network.BudgetFacturarLineaDto
 import com.authvex.balaxysefactura.core.network.BudgetInvoiceOptionsDto
 import com.authvex.balaxysefactura.core.network.BudgetListResponse
 import com.authvex.balaxysefactura.core.network.BudgetPuntoVentaDto
+import com.authvex.balaxysefactura.core.network.BudgetUpdateDto
 import com.authvex.balaxysefactura.core.network.CfeApi
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.encodeToString
@@ -40,6 +42,7 @@ class BudgetRepositoryTest {
         var invoiceResultId: Long = 999L
         var optionsResult: BudgetInvoiceOptionsDto = BudgetInvoiceOptionsDto()
         var lastCreatedDto: BudgetCreateDto? = null
+        var lastUpdatedDto: BudgetUpdateDto? = null
         var lastInvoicedDto: BudgetFacturarDto? = null
         var lastInvoicedId: Long? = null
 
@@ -49,7 +52,9 @@ class BudgetRepositoryTest {
             lastCreatedDto = dto
             return createResultId
         }
-        override suspend fun updateBudget(dto: BudgetCreateDto) {}
+        override suspend fun updateBudget(dto: BudgetUpdateDto) {
+            lastUpdatedDto = dto
+        }
         override suspend fun confirmBudget(id: Long) {}
         override suspend fun cancelBudget(id: Long) {}
         override suspend fun getInvoiceOptions(id: Long): BudgetInvoiceOptionsDto = optionsResult
@@ -84,6 +89,69 @@ class BudgetRepositoryTest {
         assertEquals(111, result.getOrNull()?.cfeCode)
         assertEquals("e-Factura", result.getOrNull()?.tipoFiscal)
         assertEquals(1, result.getOrNull()?.puntosVenta?.size)
+    }
+
+    @Test
+    fun `UPDATE_USES_PUT_PREFACTURA - updateBudget calls PUT PreFactura with BudgetUpdateDto`() = runTest {
+        val updateDto = BudgetUpdateDto(
+            id = 105L,
+            fechaEmision = "2026-10-08",
+            fechaConfirmacion = "2026-10-08",
+            fechaVencimiento = "2026-11-08",
+            numeroReferencia = "REF-UPDATE",
+            nota = "Nota Modificada",
+            terminoCondiciones = "Contado",
+            preciosIncluyenIva = true,
+            idMoneda = 1,
+            tasaCambio = 1.0,
+            importeBase = 100.0,
+            iva = 22.0,
+            descuento = 0.0,
+            importeTotalBase = 122.0,
+            importeOriginal = 100.0,
+            ivaOriginal = 22.0,
+            descuentoOriginal = 0.0,
+            importeTotalOriginal = 122.0,
+            idAlmacen = 2,
+            idCliente = 10,
+            idCentroCosto = 5L,
+            tipoDescuentoGlobal = 1,
+            valorDescuentoGlobal = 5.0,
+            documentoProductos = listOf(
+                BudgetDocumentProductUpdateDto(
+                    idProducto = 50,
+                    idSkuVariante = 99L,
+                    cantidad = 3.0,
+                    precioBase = 50.0,
+                    importeBase = 150.0,
+                    iva = 33.0,
+                    descuento = 0.0,
+                    ivaOriginal = 33.0,
+                    descuentoOriginal = 0.0,
+                    precioBaseConIva = 61.0,
+                    importeBaseConIva = 183.0,
+                    precioOriginal = 50.0,
+                    importeOriginal = 150.0,
+                    precioOriginalConIva = 61.0,
+                    importeOriginalConIva = 183.0,
+                    indicadorFacturacionC4 = 3,
+                    idPromocionSugerida = 77L,
+                    descuentoManual = true
+                )
+            )
+        )
+
+        val jsonString = json.encodeToString(updateDto)
+
+        assertTrue(jsonString.contains("\"id\":105"))
+        assertTrue(jsonString.contains("fechaEmision"))
+        assertTrue(jsonString.contains("tipoDescuentoGlobal"))
+        assertTrue(jsonString.contains("idSkuVariante"))
+
+        val result = repository.updateBudget(updateDto)
+
+        assertTrue(result.isSuccess)
+        assertEquals(updateDto, fakeBudgetApi.lastUpdatedDto)
     }
 
     @Test

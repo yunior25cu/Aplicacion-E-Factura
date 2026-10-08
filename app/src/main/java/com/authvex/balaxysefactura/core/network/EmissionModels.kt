@@ -8,9 +8,9 @@ import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class ClienteDto(
-    val id: Int,
+    val id: Int = 0,
     @SerialName("denominacion")
-    val nombre: String,
+    val nombre: String = "",
     val codigo: String? = null,
     val ruc: String? = null,
     val direccion: String? = null,
@@ -22,6 +22,14 @@ data class ClienteDto(
 }
 
 @Serializable
+data class ImpuestoVentaDto(
+    val id: Int? = null,
+    @SerialName("denominacion")
+    val nombre: String? = null,
+    val importe: Double? = null
+)
+
+@Serializable
 data class ProductoDto(
     val id: Int,
     @SerialName("denominacion")
@@ -30,15 +38,19 @@ data class ProductoDto(
     @SerialName("precioVenta")
     val precio: Double? = null,
     val tasaIva: Double? = null,
+    val impuestoVenta: ImpuestoVentaDto? = null,
     val existencia: Double? = null,
     val esServicio: Boolean = false
-)
+) {
+    val effectiveTaxRate: Double
+        get() = tasaIva ?: impuestoVenta?.importe ?: 0.0
+}
 
 @Serializable
 data class CatalogoItemDto(
-    val id: Int,
+    val id: Int = 0,
     @SerialName("denominacion")
-    val nombre: String,
+    val nombre: String = "",
     val codigo: String? = null
 )
 

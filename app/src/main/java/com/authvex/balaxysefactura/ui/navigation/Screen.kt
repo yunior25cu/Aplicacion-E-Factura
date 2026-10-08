@@ -15,4 +15,7 @@ sealed class Screen(val route: String) {
         fun createRoute(budgetId: Long) = "budget_detail/$budgetId"
     }
     object BudgetForm : Screen("budget_form")
+    object BudgetEdit : Screen("budget_edit/{budgetId}") {
+        fun createRoute(budgetId: Long) = "budget_edit/$budgetId"
+    }
 }
