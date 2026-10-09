@@ -3,4 +3,7 @@
     <cache-path
         name="presupuestos"
         path="presupuestos/" />
+    <cache-path
+        name="cfe"
+        path="cfe/" />
 </paths>

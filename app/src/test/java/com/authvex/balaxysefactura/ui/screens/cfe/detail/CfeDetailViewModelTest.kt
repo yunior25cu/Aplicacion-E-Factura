@@ -77,6 +77,7 @@ class CfeDetailViewModelTest {
 private fun mockApi(): CfeApi = object : CfeApi {
     override suspend fun search(request: CfeSearchRequest): CfeSearchResponse = throw Exception()
     override suspend fun getDocument(documentoId: Int): CfeDetailDto = throw Exception()
+    override suspend fun downloadCfePdf(documentId: Long, redirect: Boolean): retrofit2.Response<okhttp3.ResponseBody> = throw Exception()
     override suspend fun createFactura(request: FacturaCreateDto): Long = throw Exception()
     override suspend fun createFacturaElectronicDraft(request: FacturaCreateDto): FacturaResponse = throw Exception()
     override suspend fun createDevolucion(request: DevolucionCreateDto): Long = throw Exception()

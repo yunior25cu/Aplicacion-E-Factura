@@ -216,6 +216,29 @@ open class CfeRepository(private val api: CfeApi) {
         }
     }
 
+    open suspend fun downloadCfePdf(documentId: Long): Result<okhttp3.ResponseBody> {
+        return try {
+            val response = api.downloadCfePdf(documentId, redirect = false)
+            if (response.isSuccessful && response.body() != null) {
+                val contentType = response.headers()["Content-Type"] ?: "application/pdf"
+                if (!contentType.contains("application/pdf", ignoreCase = true)) {
+                    return Result.failure(AppError.Validation("El servidor devolvió un tipo de contenido no soportado ($contentType)."))
+                }
+                Result.success(response.body()!!)
+            } else {
+                val errorMsg = when (response.code()) {
+                    403 -> "Acceso denegado: No tiene permisos para descargar el PDF de este CFE."
+                    404 -> "No se encontró el documento CFE solicitado."
+                    409 -> "La representación fiscal todavía no está disponible para este CFE."
+                    else -> "Error al descargar el PDF fiscal (${response.code()})."
+                }
+                Result.failure(AppError.Validation(errorMsg))
+            }
+        } catch (e: Exception) {
+            Result.failure(ErrorMapper.fromThrowable(e))
+        }
+    }
+
     // --- Retrocompatibilidad ---
     open suspend fun getTiposPermitidos(): Result<List<CfeTipoPermitidoDto>> {
         return try {

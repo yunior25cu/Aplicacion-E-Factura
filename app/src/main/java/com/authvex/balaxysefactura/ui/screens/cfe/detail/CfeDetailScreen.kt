@@ -1,5 +1,6 @@
 package com.authvex.balaxysefactura.ui.screens.cfe.detail
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -8,11 +9,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -25,7 +29,16 @@ fun CfeDetailScreen(
     viewModel: CfeDetailViewModel,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val uiState = viewModel.uiState
+
+    LaunchedEffect(viewModel.shareError) {
+        val err = viewModel.shareError
+        if (!err.isNullOrBlank()) {
+            Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+            viewModel.shareError = null
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -37,6 +50,16 @@ fun CfeDetailScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = { viewModel.shareCfePdf(context) },
+                        enabled = !viewModel.isSharingPdf
+                    ) {
+                        if (viewModel.isSharingPdf) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        } else {
+                            Icon(Icons.Default.Share, contentDescription = "Compartir PDF Fiscal")
+                        }
+                    }
                     IconButton(onClick = { viewModel.loadDetail() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
@@ -68,7 +91,11 @@ fun CfeDetailScreen(
                     }
                 }
                 is CfeDetailUiState.Success -> {
-                    CfeDetailContent(doc = uiState.document)
+                    CfeDetailContent(
+                        doc = uiState.document,
+                        isSharingPdf = viewModel.isSharingPdf,
+                        onSharePdf = { viewModel.shareCfePdf(context) }
+                    )
                 }
             }
         }
@@ -76,7 +103,11 @@ fun CfeDetailScreen(
 }
 
 @Composable
-fun CfeDetailContent(doc: CfeDetailDto) {
+fun CfeDetailContent(
+    doc: CfeDetailDto,
+    isSharingPdf: Boolean = false,
+    onSharePdf: () -> Unit = {}
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -112,6 +143,24 @@ fun CfeDetailContent(doc: CfeDetailDto) {
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold
                 )
+            }
+        }
+
+        // Share Action Button
+        OutlinedButton(
+            onClick = onSharePdf,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+            shape = RoundedCornerShape(12.dp),
+            enabled = !isSharingPdf
+        ) {
+            if (isSharingPdf) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+            } else {
+                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Compartir PDF", fontWeight = FontWeight.Bold)
             }
         }
 
@@ -234,6 +283,6 @@ fun DetailItemRow(label: String, value: String?) {
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(text = label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(text = value ?: "-", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium)
+        Text(text = value ?: "-", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
     }
 }

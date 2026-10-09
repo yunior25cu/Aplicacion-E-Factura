@@ -91,6 +91,13 @@ interface CfeApi {
     @GET("Cfe/documento/{documentoId}/status/sync")
     suspend fun getCfeStatusSync(@Path("documentoId") documentoId: Long): CfeStatusResponse
 
+    @Streaming
+    @GET("Cfe/documento/{id}/download/pdf")
+    suspend fun downloadCfePdf(
+        @Path("id") documentId: Long,
+        @Query("redirect") redirect: Boolean = false
+    ): retrofit2.Response<okhttp3.ResponseBody>
+
     @GET("Cfe/fiscal/tipos-permitidos")
     suspend fun getTiposPermitidos(@Query("onlyImplemented") onlyImplemented: Boolean = true): List<CfeTipoPermitidoDto>
 
