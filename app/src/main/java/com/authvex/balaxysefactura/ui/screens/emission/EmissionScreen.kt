@@ -5,8 +5,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -20,6 +22,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.authvex.balaxysefactura.core.network.*
+import com.authvex.balaxysefactura.ui.screens.common.DatePickerField
 import com.authvex.balaxysefactura.ui.screens.common.DropdownSelector
 import java.text.NumberFormat
 import java.util.*
@@ -130,91 +133,171 @@ fun TypeSelectionView(types: List<CfeFiscalDocumentAvailabilityItemDto>, onSelec
 fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvailabilityItemDto, pos: PuntoVentaDto) {
     val catalogs = viewModel.cachedCatalogs ?: return
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        LazyColumn(modifier = Modifier.weight(1f)) {
-            item {
-                // 1. Cabecera de Contexto Fiscal
-                FiscalContextCard(pos, type)
-                Spacer(modifier = Modifier.height(16.dp))
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        // SCROLLABLE FORM CONTENT (Weight 1f)
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Cabecera de Contexto Fiscal (Solo Lectura - Inalterada)
+            FiscalContextCard(pos, type)
 
-                // 2. Cliente
-                ClientSelector(viewModel)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 3. Moneda (Nuevo selector compartido de Presupuesto)
-                DropdownSelector(
-                    label = "Moneda",
-                    selectedOption = viewModel.selectedMoneda?.let { "${it.denominacion} (${it.codigo})" } ?: "Moneda",
-                    options = catalogs.tasaCambios.map { "${it.denominacion} (${it.codigo})" },
-                    onOptionSelected = { index -> viewModel.selectedMoneda = catalogs.tasaCambios[index] }
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // 4. Almacén (Nuevo selector compartido de Presupuesto)
-                DropdownSelector(
-                    label = "Almacén",
-                    selectedOption = viewModel.selectedAlmacen?.nombre ?: "Almacén",
-                    options = catalogs.almacenes.map { it.nombre },
-                    onOptionSelected = { index -> viewModel.selectedAlmacen = catalogs.almacenes[index] }
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // 5. Condición de pago (Dropdown original Restaurado)
-                CondicionPagoSelector(viewModel.selectedCondicionPago) { viewModel.selectedCondicionPago = it }
-
-                Spacer(modifier = Modifier.height(24.dp))
-                Text("Líneas del Documento", style = MaterialTheme.typography.titleMedium)
-            }
-
-            // 6. Líneas del Documento
-            itemsIndexed(viewModel.lineas) { index, linea ->
-                LineItemRow(
-                    linea = linea,
-                    onEdit = { viewModel.openLineEditDialog(index) },
-                    onRemove = { viewModel.removeLinea(index) }
-                )
-            }
-
-            item {
-                // 7. Botón AGREGAR PRODUCTO
-                OutlinedButton(
-                    onClick = { viewModel.isConfiguringLine = true },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-                ) {
-                    Icon(Icons.Default.Add, null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("AGREGAR PRODUCTO")
+            // CARD 1 — CLIENTE
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Cliente", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    ClientSelector(viewModel)
                 }
+            }
 
-                // 8. Notas/Observaciones (Posición original con max 200 + filtro emoji + contador 0/200)
-                OutlinedTextField(
-                    value = viewModel.notas,
-                    onValueChange = { viewModel.onNotasChanged(it) },
-                    label = { Text("Notas/Observaciones") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 3,
-                    supportingText = {
-                        Text(
-                            text = "${viewModel.notas.length}/200",
-                            modifier = Modifier.fillMaxWidth(),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                            style = MaterialTheme.typography.bodySmall
+            // CARD 2 — DATOS DEL DOCUMENTO
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Datos del Documento", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+
+                    // FILA 1: Fecha Emisión | Fecha Confirmación
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        DatePickerField(
+                            label = "Fecha Emisión",
+                            valueDateString = viewModel.fechaEmision,
+                            onDateSelected = { viewModel.fechaEmision = it },
+                            modifier = Modifier.weight(1f)
+                        )
+                        DatePickerField(
+                            label = "Fecha Confirmación",
+                            valueDateString = viewModel.fechaConfirmacion,
+                            onDateSelected = { viewModel.onFechaConfirmacionChanged(it) },
+                            modifier = Modifier.weight(1f)
                         )
                     }
-                )
-                Spacer(modifier = Modifier.height(80.dp))
+
+                    // FILA 2: Moneda | Almacén
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        DropdownSelector(
+                            label = "Moneda",
+                            selectedOption = viewModel.selectedMoneda?.let { "${it.denominacion} (${it.codigo})" } ?: "Moneda",
+                            options = catalogs.tasaCambios.map { "${it.denominacion} (${it.codigo})" },
+                            onOptionSelected = { index -> viewModel.selectedMoneda = catalogs.tasaCambios[index] },
+                            modifier = Modifier.weight(1f)
+                        )
+                        DropdownSelector(
+                            label = "Almacén",
+                            selectedOption = viewModel.selectedAlmacen?.nombre ?: "Almacén",
+                            options = catalogs.almacenes.map { it.nombre },
+                            onOptionSelected = { index -> viewModel.selectedAlmacen = catalogs.almacenes[index] },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    // FILA 3: Condición de pago | Precios incluyen IVA
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            CondicionPagoSelector(viewModel.selectedCondicionPago) { viewModel.selectedCondicionPago = it }
+                        }
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Precios incluyen IVA", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = viewModel.preciosIncluyenIva,
+                                onCheckedChange = { viewModel.preciosIncluyenIva = it }
+                            )
+                        }
+                    }
+                }
             }
+
+            // CARD 3 — PRODUCTOS
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Productos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Button(onClick = { viewModel.isConfiguringLine = true }) {
+                            Icon(Icons.Default.Add, null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("AGREGAR")
+                        }
+                    }
+
+                    if (viewModel.lineas.isEmpty()) {
+                        Text(
+                            text = "No se han ingresado productos",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    } else {
+                        viewModel.lineas.forEachIndexed { index, linea ->
+                            LineItemRow(
+                                linea = linea,
+                                onEdit = { viewModel.openLineEditDialog(index) },
+                                onRemove = { viewModel.removeLinea(index) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // NOTAS / OBSERVACIONES (Ubicado DESPUÉS de la Card de Productos)
+            OutlinedTextField(
+                value = viewModel.notas,
+                onValueChange = { viewModel.onNotasChanged(it) },
+                label = { Text("Notas/Observaciones") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 3,
+                supportingText = {
+                    Text(
+                        text = "${viewModel.notas.length}/200",
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
         }
 
-        // 9. Footer Total estimado / Emitir
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // FIXED FOOTER — TOTAL ESTIMADO / EMITIR AHORA (Fuera de la Column Scrollable)
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(8.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
         ) {
-            val total = viewModel.lineas.sumOf { (it.precioUnitario * it.cantidad) * (1 + (it.producto.tasaIva ?: 0.0)) }
+            val total = viewModel.lineas.sumOf { (it.precioUnitario * it.cantidad) * (if (viewModel.preciosIncluyenIva) 1.0 else (1 + (it.producto.tasaIva ?: 0.0))) }
             Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("TOTAL ESTIMADO", style = MaterialTheme.typography.labelMedium)
@@ -229,7 +312,7 @@ fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvaila
                     enabled = viewModel.selectedCliente != null && viewModel.lineas.isNotEmpty(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("EMITIR")
+                    Text("EMITIR AHORA")
                 }
             }
         }

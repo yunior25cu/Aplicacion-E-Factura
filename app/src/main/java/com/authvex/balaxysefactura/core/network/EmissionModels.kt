@@ -108,6 +108,7 @@ data class FacturaCreateDto(
     val documentoProductos: List<FacturaLineaRequest>,
     val numeroReferencia: String? = null,
     val nota: String? = null,
+    val preciosIncluyenIva: Boolean? = true,
     @OptIn(ExperimentalSerializationApi::class)
     @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     val esElectronico: Boolean = true,
@@ -165,6 +166,7 @@ data class DevolucionCreateDto(
     val documentoProductos: List<FacturaLineaRequest>,
     val numeroReferencia: String? = null,
     val nota: String? = null,
+    val preciosIncluyenIva: Boolean? = true,
     @OptIn(ExperimentalSerializationApi::class)
     @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     val esElectronico: Boolean = true,
