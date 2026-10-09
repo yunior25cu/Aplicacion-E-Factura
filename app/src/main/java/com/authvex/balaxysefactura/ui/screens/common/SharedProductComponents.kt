@@ -18,8 +18,77 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.authvex.balaxysefactura.core.network.CfeFiscalIndicadorFacturacionDto
+import com.authvex.balaxysefactura.core.network.ClienteDto
 import com.authvex.balaxysefactura.core.network.ProductoDto
 import java.util.Locale
+
+@Composable
+fun SharedClientSelectDialog(
+    clientes: List<ClienteDto>,
+    isSearching: Boolean = false,
+    onSearch: (String) -> Unit,
+    onSelect: (ClienteDto) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f)) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Seleccionar Cliente", style = MaterialTheme.typography.titleLarge)
+                Spacer(modifier = Modifier.height(8.dp))
+                var query by remember { mutableStateOf("") }
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = {
+                        query = it
+                        onSearch(it)
+                    },
+                    label = { Text("Buscar por nombre, RUT, etc.") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { query = ""; onSearch("") }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Limpiar")
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                if (isSearching) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
+                }
+                if (!isSearching && clientes.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = if (query.isEmpty()) "No hay clientes registrados" else "No se encontraron clientes para '$query'",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.weight(1f)) {
+                        itemsIndexed(clientes) { _, client ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onSelect(client) }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(client.nombre, fontWeight = FontWeight.SemiBold)
+                                    Text(client.documentNumber ?: "Sin RUT/CI", style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                            HorizontalDivider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun SharedProductSelectDialog(

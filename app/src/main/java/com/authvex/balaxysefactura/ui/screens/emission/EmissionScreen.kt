@@ -598,53 +598,16 @@ fun ClientSelector(viewModel: EmissionViewModel) {
         LaunchedEffect(Unit) {
             viewModel.initClientSearch()
         }
-        Dialog(onDismissRequest = { showDialog = false }) {
-            Card(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f)) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Seleccionar Cliente", style = MaterialTheme.typography.titleLarge)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    var query by remember { mutableStateOf("") }
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = { query = it; viewModel.searchClients(it) },
-                        label = { Text("Buscar por nombre, RUT, etc.") },
-                        leadingIcon = { Icon(Icons.Default.Search, null) },
-                        trailingIcon = {
-                            if (query.isNotEmpty()) {
-                                IconButton(onClick = { query = ""; viewModel.searchClients("") }) {
-                                    Icon(Icons.Default.Clear, contentDescription = "Limpiar")
-                                }
-                            }
-                        },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    if (viewModel.isSearching) {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
-                    }
-                    if (!viewModel.isSearching && viewModel.clientSearchResults.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            Text(
-                                text = if (query.isEmpty()) "No hay clientes registrados" else "No se encontraron clientes para '$query'",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    } else {
-                        LazyColumn(modifier = Modifier.weight(1f)) {
-                            itemsIndexed(viewModel.clientSearchResults) { _, client ->
-                                ListItem(
-                                    headlineContent = { Text(client.nombre, fontWeight = FontWeight.SemiBold) },
-                                    supportingContent = { Text(client.documentNumber ?: "Sin RUT/CI") },
-                                    modifier = Modifier.clickable { viewModel.selectedCliente = client; showDialog = false }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        com.authvex.balaxysefactura.ui.screens.common.SharedClientSelectDialog(
+            clientes = viewModel.clientSearchResults,
+            isSearching = viewModel.isSearching,
+            onSearch = { viewModel.searchClients(it) },
+            onSelect = { client ->
+                viewModel.selectedCliente = client
+                showDialog = false
+            },
+            onDismiss = { showDialog = false }
+        )
     }
 }
 

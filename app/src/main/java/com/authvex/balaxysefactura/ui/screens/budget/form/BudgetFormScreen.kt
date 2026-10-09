@@ -303,8 +303,9 @@ fun BudgetFormScreen(
 
     // Client Selection Dialog
     if (showClientDialog) {
-        ClientSelectDialog(
+        com.authvex.balaxysefactura.ui.screens.common.SharedClientSelectDialog(
             clientes = viewModel.clientesList,
+            isSearching = false,
             onSearch = { viewModel.onClientQueryChanged(it) },
             onSelect = {
                 viewModel.selectedCliente = it
@@ -345,56 +346,4 @@ fun BudgetFormScreen(
             onDismiss = { viewModel.closeLineConfiguration() }
         )
     }
-}
-
-@Composable
-fun ClientSelectDialog(
-    clientes: List<ClienteDto>,
-    onSearch: (String) -> Unit,
-    onSelect: (ClienteDto) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var searchQuery by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Seleccionar Cliente") },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = {
-                        searchQuery = it
-                        onSearch(it)
-                    },
-                    placeholder = { Text("Buscar cliente...") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                Column(modifier = Modifier.height(250.dp).verticalScroll(rememberScrollState())) {
-                    clientes.forEach { cliente ->
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelect(cliente) }
-                                .padding(vertical = 8.dp)
-                        ) {
-                            Column {
-                                Text(cliente.nombre, fontWeight = FontWeight.Bold)
-                                if (!cliente.documentNumber.isNullOrBlank()) {
-                                    Text("Doc: ${cliente.documentNumber}", style = MaterialTheme.typography.bodySmall)
-                                }
-                            }
-                        }
-                        HorizontalDivider()
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar") }
-        }
-    )
 }
