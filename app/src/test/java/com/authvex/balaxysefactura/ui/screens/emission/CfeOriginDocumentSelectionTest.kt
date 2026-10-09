@@ -133,6 +133,7 @@ class CfeOriginDocumentSelectionTest {
 
         whenever(repository.getFacturaById(888L)).thenReturn(Result.success(saleDoc))
 
+        viewModel.baseCurrencyId = 50
         viewModel.selectOriginDocument(originCfeSummary)
 
         assertEquals(888L, viewModel.idDocumentoOrigen)

@@ -229,6 +229,25 @@ data class FacturaResponse(
 }
 
 @Serializable
+data class TasaCambioConfigDto(
+    val fuenteTasaCambio: String? = null,
+    val syncTasaAutomatico: Boolean = false
+)
+
+@Serializable
+data class BcuSyncRequest(
+    val fecha: String
+)
+
+@Serializable
+data class BcuSyncResponse(
+    val exitoso: Boolean = false,
+    val estado: String? = null,
+    val monedasSincronizadas: List<String> = emptyList(),
+    val error: String? = null
+)
+
+@Serializable
 data class PuntoVentaDto(
     val id: Int,
     @SerialName("nombre")

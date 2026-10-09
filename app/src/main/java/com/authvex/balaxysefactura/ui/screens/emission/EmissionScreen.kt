@@ -279,7 +279,7 @@ fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvaila
                             label = "Moneda",
                             selectedOption = viewModel.selectedMoneda?.let { "${it.denominacion} (${it.codigo})" } ?: "Moneda",
                             options = catalogs.tasaCambios.map { "${it.denominacion} (${it.codigo})" },
-                            onOptionSelected = { index -> viewModel.selectedMoneda = catalogs.tasaCambios[index] },
+                            onOptionSelected = { index -> viewModel.onMonedaSelected(catalogs.tasaCambios[index]) },
                             modifier = Modifier.weight(1f)
                         )
                         DropdownSelector(
@@ -289,6 +289,41 @@ fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvaila
                             onOptionSelected = { index -> viewModel.selectedAlmacen = catalogs.almacenes[index] },
                             modifier = Modifier.weight(1f)
                         )
+                    }
+
+                    if (!viewModel.isBaseCurrency() && viewModel.selectedMoneda != null) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            val rate = viewModel.selectedMoneda?.tasaPromedio ?: 0.0
+                            val code = viewModel.selectedMoneda?.codigo ?: ""
+                            Text(
+                                text = "$code 1 = UYU ${String.format(Locale.US, "%.3f", rate)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (rate > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                            )
+
+                            if (viewModel.exchangeRateError != null) {
+                                Text(
+                                    text = viewModel.exchangeRateError!!,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+
+                            if (!viewModel.isOriginRequired() && (rate <= 0 || viewModel.exchangeRateError != null) && (viewModel.tasaCambioConfig?.syncTasaAutomatico == true || viewModel.tasaCambioConfig?.fuenteTasaCambio == "BCU")) {
+                                Button(
+                                    onClick = { viewModel.syncBcuRate() },
+                                    enabled = !viewModel.isLoadingExchangeRate,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    if (viewModel.isLoadingExchangeRate) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                    }
+                                    Text("Sincronizar Tasa BCU")
+                                }
+                            }
+                        }
                     }
 
                     // FILA 3: Condición de pago | Precios incluyen IVA

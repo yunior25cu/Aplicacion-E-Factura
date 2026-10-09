@@ -60,6 +60,11 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
     var fechaConfirmacion by mutableStateOf(getTodayDate())
     var preciosIncluyenIva by mutableStateOf(false)
 
+    var baseCurrencyId by mutableStateOf<Int?>(null)
+    var tasaCambioConfig by mutableStateOf<TasaCambioConfigDto?>(null)
+    var isLoadingExchangeRate by mutableStateOf(false)
+    var exchangeRateError by mutableStateOf<String?>(null)
+
     var selectedCliente by mutableStateOf<ClienteDto?>(null)
     var selectedMoneda by mutableStateOf<TasaCambioSimpleDto?>(null)
     var selectedAlmacen by mutableStateOf<CatalogoItemDto?>(null)
@@ -102,6 +107,12 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
 
     private fun getTodayDate(): String = dateFormat.format(Date())
 
+    fun isBaseCurrency(): Boolean {
+        val selId = selectedMoneda?.id
+        val baseId = baseCurrencyId
+        return selId != null && baseId != null && selId == baseId
+    }
+
     fun isOriginRequired(): Boolean {
         val code = selectedFiscalType?.cfeCode ?: 0
         return code == 102 || code == 103 || code == 112 || code == 113
@@ -125,7 +136,6 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
                 query = query.ifBlank { null },
                 page = 1
             ).onSuccess { response ->
-                // Filter origin documents by CFE code (101 or 111)
                 originCfeSearchResults = response.items.filter { it.cfeCode == originCode }
             }.onFailure {
                 originCfeSearchResults = emptyList()
@@ -156,10 +166,12 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
                         decimales = 2,
                         tasaPromedio = saleDoc.tasaCambio
                     )
+                    exchangeRateError = null
                 }
 
+                val isBase = isBaseCurrency()
                 val newLines = saleDoc.documentoProductos.map { item ->
-                    val unitPrice = item.precioBase
+                    val unitPrice = if (isBase) item.precioBase else item.precioOriginal
                     val prod = item.producto ?: ProductoDto(
                         id = item.idProducto?.toInt() ?: 0,
                         nombre = item.descripcion ?: "Producto",
@@ -207,13 +219,91 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             // Retain historical rate from origin document for NC/ND
             return
         }
+        isLoadingExchangeRate = true
+        exchangeRateError = null
         viewModelScope.launch {
             repository.getTasaCambios(newDate).onSuccess { tasas ->
                 cachedCatalogs = cachedCatalogs?.copy(tasaCambios = tasas)
-                val currentId = selectedMoneda?.id
-                val matched = tasas.find { it.id == currentId } ?: tasas.firstOrNull { it.codigo == "UYU" } ?: tasas.firstOrNull()
-                selectedMoneda = matched
+                val currentMonedaId = selectedMoneda?.id
+                val matched = tasas.find { it.id == currentMonedaId }
+                if (matched != null) {
+                    selectedMoneda = matched
+                    if (!isBaseCurrency() && matched.tasaPromedio <= 0.0) {
+                        exchangeRateError = "No se ha definido una tasa de cambio vigente para la moneda seleccionada a la fecha de confirmación."
+                    }
+                } else {
+                    selectedMoneda = selectedMoneda?.copy(tasaPromedio = 0.0)
+                    if (!isBaseCurrency()) {
+                        exchangeRateError = "No se ha definido una tasa de cambio vigente para la moneda seleccionada a la fecha de confirmación."
+                    }
+                }
+            }.onFailure {
+                exchangeRateError = "Error al consultar las tasas de cambio para la fecha seleccionada."
             }
+            isLoadingExchangeRate = false
+        }
+    }
+
+    fun onMonedaSelected(item: TasaCambioSimpleDto) {
+        val previousMonedaId = selectedMoneda?.id
+        selectedMoneda = item
+
+        if (previousMonedaId != null && previousMonedaId != item.id) {
+            // Reset line unit prices on currency change so user inputs price in new currency
+            lineas.forEachIndexed { idx, line ->
+                lineas[idx] = line.copy(precioUnitario = 0.0)
+            }
+        }
+
+        if (isBaseCurrency()) {
+            exchangeRateError = null
+        } else if (item.tasaPromedio <= 0.0) {
+            exchangeRateError = "No se ha definido una tasa de cambio vigente para la moneda seleccionada a la fecha de confirmación."
+        } else {
+            exchangeRateError = null
+        }
+    }
+
+    fun syncBcuRate() {
+        val originDateStr = fechaConfirmacion
+        val cal = Calendar.getInstance()
+        try {
+            val date = dateFormat.parse(originDateStr)
+            if (date != null) cal.time = date
+        } catch (_: Exception) {}
+
+        // Subtract 1 day
+        cal.add(Calendar.DAY_OF_MONTH, -1)
+        // Roll back if Saturday (7) or Sunday (1)
+        while (cal.get(Calendar.DAY_OF_WEEK) == Calendar.SATURDAY || cal.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY) {
+            cal.add(Calendar.DAY_OF_MONTH, -1)
+        }
+        val syncDate = dateFormat.format(cal.time)
+
+        isLoadingExchangeRate = true
+        exchangeRateError = null
+        viewModelScope.launch {
+            repository.syncBcuRate(syncDate).onSuccess { response ->
+                if (response.exitoso || response.estado == "Exitoso" || response.estado == "Parcial" || response.estado == "SinCambios") {
+                    // Refetch canonical rate from catalog for fechaConfirmacion
+                    repository.getTasaCambios(fechaConfirmacion).onSuccess { tasas ->
+                        cachedCatalogs = cachedCatalogs?.copy(tasaCambios = tasas)
+                        val currentMonedaId = selectedMoneda?.id
+                        val matched = tasas.find { it.id == currentMonedaId }
+                        if (matched != null && matched.tasaPromedio > 0.0) {
+                            selectedMoneda = matched
+                            exchangeRateError = null
+                        } else {
+                            exchangeRateError = response.error ?: "No fue posible obtener una tasa BCU para la fecha requerida."
+                        }
+                    }
+                } else {
+                    exchangeRateError = response.error ?: "No fue posible obtener una tasa BCU para la fecha requerida."
+                }
+            }.onFailure { err ->
+                exchangeRateError = err.message ?: "Error al sincronizar con BCU."
+            }
+            isLoadingExchangeRate = false
         }
     }
 
@@ -254,6 +344,12 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
         viewModelScope.launch {
             uiState = EmissionUiState.Processing("Cargando catálogos...")
             try {
+                val empresaRes = repository.getEmpresa().getOrNull()
+                val empresaMonedaId = empresaRes?.moneda?.id ?: 50
+                baseCurrencyId = empresaMonedaId
+
+                tasaCambioConfig = repository.getTasaCambioConfig().getOrNull()
+
                 val data = CatalogData(
                     tasaCambios = repository.getTasaCambios(fechaConfirmacion).getOrThrow(),
                     almacenes = repository.getAlmacenes().getOrThrow(),
@@ -265,8 +361,11 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
                 )
                 cachedCatalogs = data
 
-                if (selectedMoneda == null) {
-                    selectedMoneda = data.tasaCambios.find { it.codigo == "UYU" } ?: data.tasaCambios.firstOrNull()
+                val defaultMoneda = data.tasaCambios.find { it.id == baseCurrencyId }
+                    ?: data.tasaCambios.find { it.codigo == "UYU" }
+                    ?: data.tasaCambios.firstOrNull()
+                if (defaultMoneda != null) {
+                    selectedMoneda = defaultMoneda
                 }
                 if (selectedAlmacen == null) selectedAlmacen = data.almacenes.firstOrNull()
 
@@ -325,7 +424,7 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
         editingLineIndex = null
         productBeingConfigured = producto
         dialogQuantityText = "1"
-        dialogUnitPriceText = (producto.precio ?: 0.0).toString()
+        dialogUnitPriceText = if (isBaseCurrency()) (producto.precio ?: 0.0).toString() else "0"
         lineDialogError = null
         isResolvingC4 = true
         isConfiguringLine = true
@@ -448,6 +547,18 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             return
         }
 
+        if (isLoadingExchangeRate) {
+            uiState = EmissionUiState.Error(AppError.Validation("Cargando tasa de cambio..."))
+            return
+        }
+
+        if (!isBaseCurrency() && (selectedMoneda?.tasaPromedio ?: 0.0) <= 0.0) {
+            uiState = EmissionUiState.Error(AppError.Validation(
+                exchangeRateError ?: "No se ha definido una tasa de cambio vigente para la moneda seleccionada a la fecha de confirmación."
+            ))
+            return
+        }
+
         viewModelScope.launch {
             // 1. Precheck CAE
             uiState = EmissionUiState.Processing("Verificando salud de CAE...")
@@ -472,13 +583,17 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
     }
 
     private suspend fun createFacturaERP(type: CfeFiscalDocumentAvailabilityItemDto, pos: PuntoVentaDto): Result<Long> {
-        val tasaCambio = selectedMoneda?.tasaPromedio ?: 1.0
-        val isBaseCurrency = (tasaCambio == 1.0)
+        val isBase = isBaseCurrency()
+        val tasaCambio = if (isBase) 1.0 else selectedMoneda!!.tasaPromedio
 
-        val mappedLineas = mapLineas(isBaseCurrency)
+        val mappedLineas = mapLineas(isBase)
 
         val importeBase = mappedLineas.sumOf { it.importeBase }
         val iva = mappedLineas.sumOf { it.iva }
+
+        val importeOriginal = if (isBase) 0.0 else mappedLineas.sumOf { it.importeOriginal }
+        val ivaOriginal = if (isBase) 0.0 else mappedLineas.sumOf { it.ivaOriginal }
+        val importeTotalOriginal = if (isBase) 0.0 else mappedLineas.sumOf { it.importeOriginalConIva }
 
         val finalNota = InvoiceNoteSanitizer.sanitizeInvoiceNote(notas)
 
@@ -490,9 +605,9 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             importeBase = importeBase,
             iva = iva,
             importeTotalBase = importeBase + iva,
-            importeOriginal = if (isBaseCurrency) 0.0 else (importeBase / tasaCambio),
-            ivaOriginal = if (isBaseCurrency) 0.0 else (iva / tasaCambio),
-            importeTotalOriginal = if (isBaseCurrency) 0.0 else ((importeBase + iva) / tasaCambio),
+            importeOriginal = importeOriginal,
+            ivaOriginal = ivaOriginal,
+            importeTotalOriginal = importeTotalOriginal,
             idAlmacen = selectedAlmacen?.id ?: 0,
             idCliente = selectedCliente?.id ?: 0,
             documentoProductos = mappedLineas,
@@ -512,12 +627,16 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
     private suspend fun createDevolucionERP(cfeCode: Int, type: CfeFiscalDocumentAvailabilityItemDto, pos: PuntoVentaDto): Result<Long> {
         if (idDocumentoOrigen == null) return Result.failure(Exception("Debe seleccionar un documento de origen"))
 
-        val tasaCambio = selectedMoneda?.tasaPromedio ?: 1.0
-        val isBaseCurrency = (tasaCambio == 1.0)
+        val isBase = isBaseCurrency()
+        val tasaCambio = if (isBase) 1.0 else selectedMoneda!!.tasaPromedio
 
-        val mappedLineas = mapDevolucionLineas(isBaseCurrency)
+        val mappedLineas = mapDevolucionLineas(isBase)
         val importeBase = mappedLineas.sumOf { it.importeBase }
         val iva = mappedLineas.sumOf { it.iva }
+
+        val importeOriginal = if (isBase) 0.0 else mappedLineas.sumOf { it.importeOriginal }
+        val ivaOriginal = if (isBase) 0.0 else mappedLineas.sumOf { it.ivaOriginal }
+        val importeTotalOriginal = if (isBase) 0.0 else mappedLineas.sumOf { it.importeOriginalConIva }
 
         val naturaleza = when (cfeCode) {
             102, 112 -> 1
@@ -535,9 +654,9 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             importeBase = importeBase,
             iva = iva,
             importeTotalBase = importeBase + iva,
-            importeOriginal = if (isBaseCurrency) 0.0 else (importeBase / tasaCambio),
-            ivaOriginal = if (isBaseCurrency) 0.0 else (iva / tasaCambio),
-            importeTotalOriginal = if (isBaseCurrency) 0.0 else ((importeBase + iva) / tasaCambio),
+            importeOriginal = importeOriginal,
+            ivaOriginal = ivaOriginal,
+            importeTotalOriginal = importeTotalOriginal,
             idAlmacen = selectedAlmacen?.id ?: 0,
             idCliente = selectedCliente?.id ?: 0,
             documentoProductos = mappedLineas,
@@ -558,88 +677,171 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
         return repository.createDevolucion(request)
     }
 
-    private fun mapDevolucionLineas(isBaseCurrency: Boolean): List<DevolucionLineaRequest> {
-        val tasaCambio = selectedMoneda?.tasaPromedio ?: 1.0
+    private fun mapLineas(isBaseCurrency: Boolean): List<FacturaLineaRequest> {
+        val tasaCambio = if (isBaseCurrency) 1.0 else (selectedMoneda?.tasaPromedio ?: 1.0)
+
         return lineas.map {
-            val price = it.precioUnitario
+            val price = it.precioUnitario // Typed by user in Document Currency
             val qty = it.cantidad
             val taxRate = it.producto.tasaIva ?: 0.0
 
-            val lineTotalInput = price * qty
-            val importeBase: Double
-            val iva: Double
+            if (isBaseCurrency) {
+                val lineTotalInput = price * qty
+                val importeBase: Double
+                val iva: Double
 
-            if (preciosIncluyenIva && taxRate > 0) {
-                importeBase = lineTotalInput / (1 + taxRate)
-                iva = lineTotalInput - importeBase
+                if (preciosIncluyenIva && taxRate > 0) {
+                    importeBase = lineTotalInput / (1 + taxRate)
+                    iva = lineTotalInput - importeBase
+                } else {
+                    importeBase = lineTotalInput
+                    iva = importeBase * taxRate
+                }
+                val totalConIva = importeBase + iva
+                val precioBaseCalculated = if (preciosIncluyenIva && taxRate > 0) price / (1 + taxRate) else price
+
+                FacturaLineaRequest(
+                    idProducto = it.producto.id,
+                    cantidad = qty,
+                    precioBase = precioBaseCalculated,
+                    importeBase = importeBase,
+                    iva = iva,
+                    descuento = it.descuento,
+                    ivaOriginal = 0.0,
+                    descuentoOriginal = 0.0,
+                    precioBaseConIva = if (preciosIncluyenIva || taxRate == 0.0) price else price * (1 + taxRate),
+                    importeBaseConIva = totalConIva,
+                    precioOriginal = 0.0,
+                    importeOriginal = 0.0,
+                    precioOriginalConIva = 0.0,
+                    importeOriginalConIva = 0.0,
+                    indicadorFacturacionC4 = it.indicadorFacturacionC4
+                )
             } else {
-                importeBase = lineTotalInput
-                iva = importeBase * taxRate
+                // Foreign Currency (e.g. USD) -> price is PRECIO ORIGINAL
+                val lineTotalOriginalInput = price * qty
+                val importeOriginal: Double
+                val ivaOriginal: Double
+
+                if (preciosIncluyenIva && taxRate > 0) {
+                    importeOriginal = lineTotalOriginalInput / (1 + taxRate)
+                    ivaOriginal = lineTotalOriginalInput - importeOriginal
+                } else {
+                    importeOriginal = lineTotalOriginalInput
+                    ivaOriginal = importeOriginal * taxRate
+                }
+                val totalOriginalConIva = importeOriginal + ivaOriginal
+                val precioOriginalCalculated = if (preciosIncluyenIva && taxRate > 0) price / (1 + taxRate) else price
+
+                // Derived Base Amounts = Original * tasaCambio
+                val precioBase = precioOriginalCalculated * tasaCambio
+                val importeBase = importeOriginal * tasaCambio
+                val ivaBase = ivaOriginal * tasaCambio
+                val totalBaseConIva = totalOriginalConIva * tasaCambio
+
+                FacturaLineaRequest(
+                    idProducto = it.producto.id,
+                    cantidad = qty,
+                    precioBase = precioBase,
+                    importeBase = importeBase,
+                    iva = ivaBase,
+                    descuento = it.descuento * tasaCambio,
+                    ivaOriginal = ivaOriginal,
+                    descuentoOriginal = it.descuento,
+                    precioBaseConIva = (if (preciosIncluyenIva || taxRate == 0.0) price else price * (1 + taxRate)) * tasaCambio,
+                    importeBaseConIva = totalBaseConIva,
+                    precioOriginal = precioOriginalCalculated,
+                    importeOriginal = importeOriginal,
+                    precioOriginalConIva = if (preciosIncluyenIva || taxRate == 0.0) price else price * (1 + taxRate),
+                    importeOriginalConIva = totalOriginalConIva,
+                    indicadorFacturacionC4 = it.indicadorFacturacionC4
+                )
             }
-            val totalConIva = importeBase + iva
-
-            val precioBaseCalculated = if (preciosIncluyenIva && taxRate > 0) price / (1 + taxRate) else price
-
-            DevolucionLineaRequest(
-                idProducto = it.producto.id,
-                cantidad = qty,
-                devuelto = qty,
-                precioBase = precioBaseCalculated,
-                importeBase = importeBase,
-                iva = iva,
-                descuento = it.descuento,
-                ivaOriginal = if (isBaseCurrency) 0.0 else (iva / tasaCambio),
-                descuentoOriginal = if (isBaseCurrency) 0.0 else (it.descuento / tasaCambio),
-                precioBaseConIva = if (preciosIncluyenIva || taxRate == 0.0) price else price * (1 + taxRate),
-                importeBaseConIva = totalConIva,
-                precioOriginal = if (isBaseCurrency) 0.0 else (precioBaseCalculated / tasaCambio),
-                importeOriginal = if (isBaseCurrency) 0.0 else (importeBase / tasaCambio),
-                precioOriginalConIva = if (isBaseCurrency) 0.0 else ((if (preciosIncluyenIva || taxRate == 0.0) price else price * (1 + taxRate)) / tasaCambio),
-                importeOriginalConIva = if (isBaseCurrency) 0.0 else (totalConIva / tasaCambio),
-                idSkuVariante = it.idSkuVariante
-            )
         }
     }
 
-    private fun mapLineas(isBaseCurrency: Boolean): List<FacturaLineaRequest> {
-        val tasaCambio = selectedMoneda?.tasaPromedio ?: 1.0
+    private fun mapDevolucionLineas(isBaseCurrency: Boolean): List<DevolucionLineaRequest> {
+        val tasaCambio = if (isBaseCurrency) 1.0 else (selectedMoneda?.tasaPromedio ?: 1.0)
+
         return lineas.map {
-            val price = it.precioUnitario
+            val price = it.precioUnitario // Typed by user in Document Currency
             val qty = it.cantidad
             val taxRate = it.producto.tasaIva ?: 0.0
 
-            val lineTotalInput = price * qty
-            val importeBase: Double
-            val iva: Double
+            if (isBaseCurrency) {
+                val lineTotalInput = price * qty
+                val importeBase: Double
+                val iva: Double
 
-            if (preciosIncluyenIva && taxRate > 0) {
-                importeBase = lineTotalInput / (1 + taxRate)
-                iva = lineTotalInput - importeBase
+                if (preciosIncluyenIva && taxRate > 0) {
+                    importeBase = lineTotalInput / (1 + taxRate)
+                    iva = lineTotalInput - importeBase
+                } else {
+                    importeBase = lineTotalInput
+                    iva = importeBase * taxRate
+                }
+                val totalConIva = importeBase + iva
+                val precioBaseCalculated = if (preciosIncluyenIva && taxRate > 0) price / (1 + taxRate) else price
+
+                DevolucionLineaRequest(
+                    idProducto = it.producto.id,
+                    cantidad = qty,
+                    devuelto = qty,
+                    precioBase = precioBaseCalculated,
+                    importeBase = importeBase,
+                    iva = iva,
+                    descuento = it.descuento,
+                    ivaOriginal = 0.0,
+                    descuentoOriginal = 0.0,
+                    precioBaseConIva = if (preciosIncluyenIva || taxRate == 0.0) price else price * (1 + taxRate),
+                    importeBaseConIva = totalConIva,
+                    precioOriginal = 0.0,
+                    importeOriginal = 0.0,
+                    precioOriginalConIva = 0.0,
+                    importeOriginalConIva = 0.0,
+                    idSkuVariante = it.idSkuVariante
+                )
             } else {
-                importeBase = lineTotalInput
-                iva = importeBase * taxRate
+                // Foreign Currency (e.g. USD) -> price is PRECIO ORIGINAL
+                val lineTotalOriginalInput = price * qty
+                val importeOriginal: Double
+                val ivaOriginal: Double
+
+                if (preciosIncluyenIva && taxRate > 0) {
+                    importeOriginal = lineTotalOriginalInput / (1 + taxRate)
+                    ivaOriginal = lineTotalOriginalInput - importeOriginal
+                } else {
+                    importeOriginal = lineTotalOriginalInput
+                    ivaOriginal = importeOriginal * taxRate
+                }
+                val totalOriginalConIva = importeOriginal + ivaOriginal
+                val precioOriginalCalculated = if (preciosIncluyenIva && taxRate > 0) price / (1 + taxRate) else price
+
+                // Derived Base Amounts = Original * tasaCambio
+                val precioBase = precioOriginalCalculated * tasaCambio
+                val importeBase = importeOriginal * tasaCambio
+                val ivaBase = ivaOriginal * tasaCambio
+                val totalBaseConIva = totalOriginalConIva * tasaCambio
+
+                DevolucionLineaRequest(
+                    idProducto = it.producto.id,
+                    cantidad = qty,
+                    devuelto = qty,
+                    precioBase = precioBase,
+                    importeBase = importeBase,
+                    iva = ivaBase,
+                    descuento = it.descuento * tasaCambio,
+                    ivaOriginal = ivaOriginal,
+                    descuentoOriginal = it.descuento,
+                    precioBaseConIva = (if (preciosIncluyenIva || taxRate == 0.0) price else price * (1 + taxRate)) * tasaCambio,
+                    importeBaseConIva = totalBaseConIva,
+                    precioOriginal = precioOriginalCalculated,
+                    importeOriginal = importeOriginal,
+                    precioOriginalConIva = if (preciosIncluyenIva || taxRate == 0.0) price else price * (1 + taxRate),
+                    importeOriginalConIva = totalOriginalConIva,
+                    idSkuVariante = it.idSkuVariante
+                )
             }
-            val totalConIva = importeBase + iva
-
-            val precioBaseCalculated = if (preciosIncluyenIva && taxRate > 0) price / (1 + taxRate) else price
-
-            FacturaLineaRequest(
-                idProducto = it.producto.id,
-                cantidad = qty,
-                precioBase = precioBaseCalculated,
-                importeBase = importeBase,
-                iva = iva,
-                descuento = it.descuento,
-                ivaOriginal = if (isBaseCurrency) 0.0 else (iva / tasaCambio),
-                descuentoOriginal = if (isBaseCurrency) 0.0 else (it.descuento / tasaCambio),
-                precioBaseConIva = if (preciosIncluyenIva || taxRate == 0.0) price else price * (1 + taxRate),
-                importeBaseConIva = totalConIva,
-                precioOriginal = if (isBaseCurrency) 0.0 else (precioBaseCalculated / tasaCambio),
-                importeOriginal = if (isBaseCurrency) 0.0 else (importeBase / tasaCambio),
-                precioOriginalConIva = if (isBaseCurrency) 0.0 else ((if (preciosIncluyenIva || taxRate == 0.0) price else price * (1 + taxRate)) / tasaCambio),
-                importeOriginalConIva = if (isBaseCurrency) 0.0 else (totalConIva / tasaCambio),
-                indicadorFacturacionC4 = it.indicadorFacturacionC4
-            )
         }
     }
 

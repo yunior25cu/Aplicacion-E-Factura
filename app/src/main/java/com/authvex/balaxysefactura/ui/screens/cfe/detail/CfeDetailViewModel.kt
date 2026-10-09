@@ -31,6 +31,9 @@ class CfeDetailViewModel(
 
     var shareError by mutableStateOf<String?>(null)
 
+    var formattedTotalText by mutableStateOf<String?>(null)
+        private set
+
     init {
         loadDetail()
     }
@@ -38,12 +41,52 @@ class CfeDetailViewModel(
     fun loadDetail() {
         viewModelScope.launch {
             uiState = CfeDetailUiState.Loading
-            repository.getDocumentDetail(documentoId.toInt()).onSuccess { doc ->
-                uiState = CfeDetailUiState.Success(doc)
-            }.onFailure { error ->
-                uiState = CfeDetailUiState.Error(error as? AppError ?: AppError.Unexpected(error.message ?: "Error desconocido"))
+            val detailResult = repository.getDocumentDetail(documentoId.toInt())
+            if (detailResult.isFailure) {
+                uiState = CfeDetailUiState.Error(
+                    (detailResult.exceptionOrNull() as? AppError)
+                        ?: AppError.Unexpected(detailResult.exceptionOrNull()?.message ?: "Error al cargar detalle")
+                )
+                return@launch
             }
+
+            val doc = detailResult.getOrThrow()
+
+            // Fetch base currency id from Empresa
+            val empresaRes = repository.getEmpresa().getOrNull()
+            val baseCurrencyId = empresaRes?.moneda?.id ?: 50
+
+            // Fetch ERP document (Factura or Devolucion)
+            val erpDocRes = if (isDevolucionCode(doc.cfeCode)) {
+                repository.getDevolucionById(documentoId)
+            } else {
+                repository.getFacturaById(documentoId)
+            }
+
+            val erpDoc = erpDocRes.getOrNull()
+            if (erpDocRes.isSuccess && erpDoc != null) {
+                val isBaseCurrency = (erpDoc.moneda?.id == baseCurrencyId)
+                if (isBaseCurrency) {
+                    val amount = erpDoc.importeTotalBase ?: doc.importeTotal ?: 0.0
+                    val symbol = doc.monedaSimbolo ?: "$"
+                    formattedTotalText = "$symbol ${String.format(java.util.Locale.US, "%.2f", amount)}"
+                } else {
+                    val amount = erpDoc.importeTotalOriginal ?: 0.0
+                    val code = erpDoc.moneda?.codigo ?: doc.monedaCodigo ?: "USD"
+                    formattedTotalText = "$code ${String.format(java.util.Locale.US, "%.2f", amount)}"
+                }
+            } else {
+                val amount = doc.importeTotal ?: 0.0
+                val symbol = doc.monedaSimbolo ?: "$"
+                formattedTotalText = "$symbol ${String.format(java.util.Locale.US, "%.2f", amount)}"
+            }
+
+            uiState = CfeDetailUiState.Success(doc)
         }
+    }
+
+    private fun isDevolucionCode(code: Int?): Boolean {
+        return code in listOf(102, 103, 112, 113, 122, 123, 132, 133, 142, 143, 152, 153)
     }
 
     fun shareCfePdf(context: Context) {

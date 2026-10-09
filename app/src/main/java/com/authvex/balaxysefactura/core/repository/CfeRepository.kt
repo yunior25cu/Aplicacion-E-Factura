@@ -32,6 +32,33 @@ open class CfeRepository(private val api: CfeApi) {
         }
     }
 
+    open suspend fun getDevolucionById(id: Long): Result<BudgetDto> {
+        return try {
+            val response = api.getDevolucionById(id)
+            Result.success(response)
+        } catch (e: Exception) {
+            Result.failure(ErrorMapper.fromThrowable(e))
+        }
+    }
+
+    open suspend fun getTasaCambioConfig(): Result<TasaCambioConfigDto> {
+        return try {
+            val response = api.getTasaCambioConfig()
+            Result.success(response)
+        } catch (e: Exception) {
+            Result.failure(ErrorMapper.fromThrowable(e))
+        }
+    }
+
+    open suspend fun syncBcuRate(fecha: String): Result<BcuSyncResponse> {
+        return try {
+            val response = api.syncBcuRate(BcuSyncRequest(fecha))
+            Result.success(response)
+        } catch (e: Exception) {
+            Result.failure(ErrorMapper.fromThrowable(e))
+        }
+    }
+
     // --- Emisión ERP ---
     open suspend fun createFactura(request: FacturaCreateDto): Result<Long> {
         return try {

@@ -122,7 +122,7 @@ class EmissionViewModelTest {
         val product = ProductoDto(1001, "Product", "P001", 100.0, 0.0)
         viewModel.startLineConfiguration(product)
         advanceUntilIdle()
-        viewModel.confirmLineConfiguration(1.0, 40.0, null) // 40 UYU = 1 USD
+        viewModel.confirmLineConfiguration(1.0, 1.0, null) // 1.0 USD @ exchange rate 40.0 = 40.0 UYU
         
         whenever(repository.createFacturaElectronicDraft(any())).thenReturn(Result.success(123L))
         viewModel.proceedToEmission()

@@ -93,6 +93,7 @@ fun CfeDetailScreen(
                 is CfeDetailUiState.Success -> {
                     CfeDetailContent(
                         doc = uiState.document,
+                        formattedTotalText = viewModel.formattedTotalText,
                         isSharingPdf = viewModel.isSharingPdf,
                         onSharePdf = { viewModel.shareCfePdf(context) }
                     )
@@ -105,6 +106,7 @@ fun CfeDetailScreen(
 @Composable
 fun CfeDetailContent(
     doc: CfeDetailDto,
+    formattedTotalText: String? = null,
     isSharingPdf: Boolean = false,
     onSharePdf: () -> Unit = {}
 ) {
@@ -138,7 +140,7 @@ fun CfeDetailContent(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "${doc.monedaSimbolo ?: ""} ${doc.importeTotal}",
+                    text = formattedTotalText ?: "${doc.monedaSimbolo ?: ""} ${doc.importeTotal}",
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold

@@ -64,6 +64,12 @@ interface CfeApi {
     @GET("Empresa/obtener")
     suspend fun getEmpresa(): EmpresaDto
 
+    @GET("Empresa/tasa-cambio-config")
+    suspend fun getTasaCambioConfig(): TasaCambioConfigDto
+
+    @POST("TasaCambio/sincronizar-bcu")
+    suspend fun syncBcuRate(@Body request: BcuSyncRequest): BcuSyncResponse
+
     // --- Flujo Fiscal Actualizado ---
     @GET("Cfe/puntos-venta")
     suspend fun getPuntosVenta(): List<PuntoVentaDto>
@@ -93,6 +99,9 @@ interface CfeApi {
 
     @GET("Factura/{id}")
     suspend fun getFacturaById(@Path("id") id: Long): BudgetDto
+
+    @GET("Devolucion/{id}")
+    suspend fun getDevolucionById(@Path("id") id: Long): BudgetDto
 
     @Streaming
     @GET("Cfe/documento/{id}/download/pdf")
