@@ -20,6 +20,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.authvex.balaxysefactura.core.network.*
+import com.authvex.balaxysefactura.ui.screens.common.DropdownSelector
 import java.text.NumberFormat
 import java.util.*
 
@@ -38,7 +39,11 @@ fun EmissionScreen(
                 title = { Text("Emitir Comprobante") },
                 navigationIcon = {
                     IconButton(onClick = { 
-                        if (state is EmissionUiState.SelectPOS) onBack() else viewModel.resetToStart() 
+                        if (state is EmissionUiState.FillForm) {
+                            viewModel.resetToTypeSelection()
+                        } else {
+                            onBack()
+                        }
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
@@ -58,7 +63,7 @@ fun EmissionScreen(
                     TypeSelectionView(state.types, onSelect = { viewModel.selectFiscalType(it) })
                 }
                 is EmissionUiState.FillForm -> {
-                    EmissionFormView(viewModel, state.type, state.pos, state.catalogs)
+                    EmissionFormView(viewModel, state.type, state.pos)
                 }
                 is EmissionUiState.Processing -> {
                     ProcessingState(state.message, modifier = Modifier.align(Alignment.Center))
@@ -122,40 +127,58 @@ fun TypeSelectionView(types: List<CfeFiscalDocumentAvailabilityItemDto>, onSelec
 }
 
 @Composable
-fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvailabilityItemDto, pos: PuntoVentaDto, catalogs: CatalogData) {
+fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvailabilityItemDto, pos: PuntoVentaDto) {
+    val catalogs = viewModel.cachedCatalogs ?: return
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         LazyColumn(modifier = Modifier.weight(1f)) {
             item {
-                // Cabecera de Contexto Fiscal (Solo Lectura)
+                // 1. Cabecera de Contexto Fiscal
                 FiscalContextCard(pos, type)
                 Spacer(modifier = Modifier.height(16.dp))
-                
+
+                // 2. Cliente
                 ClientSelector(viewModel)
                 Spacer(modifier = Modifier.height(16.dp))
-                
+
+                // 3. Moneda (Nuevo selector compartido de Presupuesto)
                 DropdownSelector(
-                    label = "Moneda", 
-                    items = catalogs.tasaCambios.map { CatalogoItemDto(it.id, it.denominacion, it.codigo) }, 
-                    selected = viewModel.selectedMoneda?.let { CatalogoItemDto(it.id, it.denominacion, it.codigo) }
-                ) { item -> 
-                    viewModel.selectedMoneda = catalogs.tasaCambios.find { it.id == item.id }
-                }
-                
+                    label = "Moneda",
+                    selectedOption = viewModel.selectedMoneda?.let { "${it.denominacion} (${it.codigo})" } ?: "Moneda",
+                    options = catalogs.tasaCambios.map { "${it.denominacion} (${it.codigo})" },
+                    onOptionSelected = { index -> viewModel.selectedMoneda = catalogs.tasaCambios[index] }
+                )
+
                 Spacer(modifier = Modifier.height(8.dp))
-                DropdownSelector("Almacén", catalogs.almacenes, viewModel.selectedAlmacen) { viewModel.selectedAlmacen = it }
-                
+
+                // 4. Almacén (Nuevo selector compartido de Presupuesto)
+                DropdownSelector(
+                    label = "Almacén",
+                    selectedOption = viewModel.selectedAlmacen?.nombre ?: "Almacén",
+                    options = catalogs.almacenes.map { it.nombre },
+                    onOptionSelected = { index -> viewModel.selectedAlmacen = catalogs.almacenes[index] }
+                )
+
                 Spacer(modifier = Modifier.height(8.dp))
+
+                // 5. Condición de pago (Dropdown original Restaurado)
                 CondicionPagoSelector(viewModel.selectedCondicionPago) { viewModel.selectedCondicionPago = it }
-                
+
                 Spacer(modifier = Modifier.height(24.dp))
                 Text("Líneas del Documento", style = MaterialTheme.typography.titleMedium)
             }
-            
+
+            // 6. Líneas del Documento
             itemsIndexed(viewModel.lineas) { index, linea ->
-                LineItemRow(linea, onRemove = { viewModel.removeLinea(index) })
+                LineItemRow(
+                    linea = linea,
+                    onEdit = { viewModel.openLineEditDialog(index) },
+                    onRemove = { viewModel.removeLinea(index) }
+                )
             }
-            
+
             item {
+                // 7. Botón AGREGAR PRODUCTO
                 OutlinedButton(
                     onClick = { viewModel.isConfiguringLine = true },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
@@ -164,18 +187,28 @@ fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvaila
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("AGREGAR PRODUCTO")
                 }
-                
+
+                // 8. Notas/Observaciones (Posición original con max 200 + filtro emoji + contador 0/200)
                 OutlinedTextField(
                     value = viewModel.notas,
-                    onValueChange = { viewModel.notas = it },
+                    onValueChange = { viewModel.onNotasChanged(it) },
                     label = { Text("Notas/Observaciones") },
                     modifier = Modifier.fillMaxWidth(),
-                    minLines = 3
+                    minLines = 3,
+                    supportingText = {
+                        Text(
+                            text = "${viewModel.notas.length}/200",
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 )
                 Spacer(modifier = Modifier.height(80.dp))
             }
         }
-        
+
+        // 9. Footer Total estimado / Emitir
         Card(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.cardElevation(8.dp),
@@ -202,8 +235,24 @@ fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvaila
         }
     }
 
-    if (viewModel.isConfiguringLine) {
+    if (viewModel.isConfiguringLine && viewModel.editingLineIndex == null) {
         ProductSearchAndConfigDialog(viewModel)
+    }
+
+    if (viewModel.editingLineIndex != null && viewModel.productBeingConfigured != null) {
+        com.authvex.balaxysefactura.ui.screens.common.LineConfigurationDialog(
+            productName = viewModel.productBeingConfigured!!.nombre,
+            quantityText = viewModel.dialogQuantityText,
+            priceText = viewModel.dialogUnitPriceText,
+            currencySymbol = viewModel.selectedMoneda?.codigo ?: "UYU",
+            errorMessage = viewModel.lineDialogError,
+            onQuantityChange = { viewModel.dialogQuantityText = it },
+            onPriceChange = { viewModel.dialogUnitPriceText = it },
+            onConfirm = {
+                viewModel.confirmLineEdit(viewModel.dialogQuantityText, viewModel.dialogUnitPriceText)
+            },
+            onDismiss = { viewModel.cancelLineConfiguration() }
+        )
     }
 }
 
@@ -237,12 +286,80 @@ fun FiscalContextCard(pos: PuntoVentaDto, type: CfeFiscalDocumentAvailabilityIte
     }
 }
 
+@Composable
+fun ClientSelector(viewModel: EmissionViewModel) {
+    var showDialog by remember { mutableStateOf(false) }
+    OutlinedCard(onClick = { showDialog = true }, modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Person, null, modifier = Modifier.padding(end = 16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(viewModel.selectedCliente?.nombre ?: "Seleccionar Cliente", style = MaterialTheme.typography.titleMedium)
+                Text(viewModel.selectedCliente?.documentNumber ?: "Toque para buscar", style = MaterialTheme.typography.bodyMedium)
+            }
+            Icon(Icons.Default.Search, null)
+        }
+    }
+
+    if (showDialog) {
+        LaunchedEffect(Unit) {
+            viewModel.initClientSearch()
+        }
+        Dialog(onDismissRequest = { showDialog = false }) {
+            Card(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Seleccionar Cliente", style = MaterialTheme.typography.titleLarge)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    var query by remember { mutableStateOf("") }
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it; viewModel.searchClients(it) },
+                        label = { Text("Buscar por nombre, RUT, etc.") },
+                        leadingIcon = { Icon(Icons.Default.Search, null) },
+                        trailingIcon = {
+                            if (query.isNotEmpty()) {
+                                IconButton(onClick = { query = ""; viewModel.searchClients("") }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Limpiar")
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (viewModel.isSearching) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
+                    }
+                    if (!viewModel.isSearching && viewModel.clientSearchResults.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = if (query.isEmpty()) "No hay clientes registrados" else "No se encontraron clientes para '$query'",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        LazyColumn(modifier = Modifier.weight(1f)) {
+                            itemsIndexed(viewModel.clientSearchResults) { _, client ->
+                                ListItem(
+                                    headlineContent = { Text(client.nombre, fontWeight = FontWeight.SemiBold) },
+                                    supportingContent = { Text(client.documentNumber ?: "Sin RUT/CI") },
+                                    modifier = Modifier.clickable { viewModel.selectedCliente = client; showDialog = false }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CondicionPagoSelector(selected: CondicionPagoComercial, onSelect: (CondicionPagoComercial) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val options = listOf(CondicionPagoComercial.CONTADO, CondicionPagoComercial.CREDITO)
-    
+
     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
         OutlinedTextField(
             value = if (selected == CondicionPagoComercial.CONTADO) "Contado" else "Crédito",
@@ -255,7 +372,7 @@ fun CondicionPagoSelector(selected: CondicionPagoComercial, onSelect: (Condicion
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEach { option ->
                 DropdownMenuItem(
-                    text = { Text(if (option == CondicionPagoComercial.CONTADO) "Contado" else "Crédito") }, 
+                    text = { Text(if (option == CondicionPagoComercial.CONTADO) "Contado" else "Crédito") },
                     onClick = { onSelect(option); expanded = false }
                 )
             }
@@ -264,23 +381,28 @@ fun CondicionPagoSelector(selected: CondicionPagoComercial, onSelect: (Condicion
 }
 
 @Composable
-fun LineItemRow(linea: LineaForm, onRemove: () -> Unit) {
+fun LineItemRow(linea: LineaForm, onEdit: () -> Unit, onRemove: () -> Unit) {
     val total = (linea.precioUnitario * linea.cantidad) * (1 + (linea.producto.tasaIva ?: 0.0))
-    OutlinedCard(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onEdit() }
+    ) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(linea.producto.nombre, fontWeight = FontWeight.Bold)
                 Text("${linea.cantidad} x ${linea.precioUnitario} (+ IVA)", style = MaterialTheme.typography.bodySmall)
                 if (linea.indicadorFacturacionC4 != null) {
                     AssistChip(
-                        onClick = {}, 
+                        onClick = {},
                         label = { Text("C4: ${linea.indicadorFacturacionC4}") },
                         colors = AssistChipDefaults.assistChipColors(labelColor = MaterialTheme.colorScheme.secondary)
                     )
                 }
             }
             Text(NumberFormat.getCurrencyInstance().format(total), fontWeight = FontWeight.ExtraBold)
-            IconButton(onClick = onRemove) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+            Row {
+                IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, "Editar", tint = MaterialTheme.colorScheme.primary) }
+                IconButton(onClick = onRemove) { Icon(Icons.Default.Delete, "Eliminar", tint = MaterialTheme.colorScheme.error) }
+            }
         }
     }
 }
@@ -337,95 +459,6 @@ fun ListItemContent(headline: String, supporting: String? = null, trailing: @Com
             }
         }
         trailing?.invoke()
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun DropdownSelector(label: String, items: List<CatalogoItemDto>, selected: CatalogoItemDto?, onSelect: (CatalogoItemDto) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
-        OutlinedTextField(
-            value = selected?.nombre ?: "",
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(label) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth()
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            items.forEach { item ->
-                DropdownMenuItem(text = { Text(item.nombre) }, onClick = { onSelect(item); expanded = false })
-            }
-        }
-    }
-}
-
-@Composable
-fun ClientSelector(viewModel: EmissionViewModel) {
-    var showDialog by remember { mutableStateOf(false) }
-    OutlinedCard(onClick = { showDialog = true }, modifier = Modifier.fillMaxWidth()) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Person, null, modifier = Modifier.padding(end = 16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(viewModel.selectedCliente?.nombre ?: "Seleccionar Cliente", style = MaterialTheme.typography.titleMedium)
-                Text(viewModel.selectedCliente?.documentNumber ?: "Toque para buscar", style = MaterialTheme.typography.bodyMedium)
-            }
-            Icon(Icons.Default.Search, null)
-        }
-    }
-    
-    if (showDialog) {
-        LaunchedEffect(Unit) {
-            viewModel.initClientSearch()
-        }
-        Dialog(onDismissRequest = { showDialog = false }) {
-            Card(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f)) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Seleccionar Cliente", style = MaterialTheme.typography.titleLarge)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    var query by remember { mutableStateOf("") }
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = { query = it; viewModel.searchClients(it) },
-                        label = { Text("Buscar por nombre, RUT, etc.") },
-                        leadingIcon = { Icon(Icons.Default.Search, null) },
-                        trailingIcon = {
-                            if (query.isNotEmpty()) {
-                                IconButton(onClick = { query = ""; viewModel.searchClients("") }) {
-                                    Icon(Icons.Default.Clear, contentDescription = "Limpiar")
-                                }
-                            }
-                        },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    if (viewModel.isSearching) {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
-                    }
-                    if (!viewModel.isSearching && viewModel.clientSearchResults.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            Text(
-                                text = if (query.isEmpty()) "No hay clientes registrados" else "No se encontraron clientes para '$query'",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    } else {
-                        LazyColumn(modifier = Modifier.weight(1f)) {
-                            itemsIndexed(viewModel.clientSearchResults) { _, client ->
-                                ListItem(
-                                    headlineContent = { Text(client.nombre, fontWeight = FontWeight.SemiBold) },
-                                    supportingContent = { Text(client.documentNumber ?: "Sin RUT/CI") },
-                                    modifier = Modifier.clickable { viewModel.selectedCliente = client; showDialog = false }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -509,11 +542,13 @@ fun LineConfigurator(viewModel: EmissionViewModel) {
         }
 
         viewModel.cachedCatalogs?.let { catalogs ->
+            val selectedC4Obj = catalogs.indicadoresC4.find { it.id == selectedC4 }
             DropdownSelector(
                 label = "Indicador Facturación (C4)",
-                items = catalogs.indicadoresC4.map { CatalogoItemDto(it.id, it.name) },
-                selected = catalogs.indicadoresC4.find { it.id == selectedC4 }?.let { CatalogoItemDto(it.id, it.name) }
-            ) { selectedC4 = it.id }
+                selectedOption = selectedC4Obj?.name ?: "Indicador C4",
+                options = catalogs.indicadoresC4.map { it.name },
+                onOptionSelected = { index -> selectedC4 = catalogs.indicadoresC4[index].id }
+            )
         }
 
         Spacer(modifier = Modifier.height(24.dp))

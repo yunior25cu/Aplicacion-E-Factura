@@ -14,6 +14,42 @@ class BudgetPdfGeneratorTest {
     }
 
     @Test
+    fun `PDF_LINE_PRICE_HAS_NO_CURRENCY_PREFIX and PDF_LINE_IVA_HAS_NO_CURRENCY_PREFIX and PDF_LINE_AMOUNT_HAS_NO_CURRENCY_PREFIX`() {
+        val company = EmpresaDto(id = 10, nombre = "Empresa Test", moneda = CatalogoItemDto(50, "Pesos Test", "UYU"))
+        val budget = BudgetDto(
+            id = 105L,
+            folio = "PF-4/01/2026",
+            fechaEmision = "2026-01-04",
+            fechaVencimiento = "2026-02-04",
+            importeBase = 12550.0,
+            iva = 0.0,
+            importeTotalBase = 13030.0,
+            moneda = CatalogoItemDto(50, "Pesos Test", "UYU"),
+            documentoProductos = listOf(
+                BudgetDocumentProductDto(
+                    id = 1001L,
+                    precioBase = 12550.0,
+                    importeBase = 12550.0,
+                    iva = 0.0,
+                    porcentajeIva = 0.0,
+                    producto = ProductoDto(50, "Detergente...", precio = 15000.0, tasaIva = 0.0)
+                )
+            )
+        )
+
+        val model = BudgetPdfPresentationBuilder.build(budget, company)
+
+        // Line item fields MUST NOT contain currency code/symbol
+        assertEquals("12550.00", model.lines.first().precioText)
+        assertEquals("0.00", model.lines.first().ivaText)
+        assertEquals("12550.00", model.lines.first().importeText)
+
+        // Totals MUST KEEP currency code/symbol
+        assertEquals("UYU 12550.00", model.subtotalNetoText)
+        assertEquals("UYU 13030.00", model.importeTotalText)
+    }
+
+    @Test
     fun `PDF_DOES_NOT_USE_PRODUCT_CATALOG_PRICE - uses persisted document price 1029 not current catalog price 1500`() {
         val company = EmpresaDto(id = 10, nombre = "Empresa Test", moneda = CatalogoItemDto(50, "Pesos Test", "UYU"))
         val budget = BudgetDto(
@@ -39,7 +75,7 @@ class BudgetPdfGeneratorTest {
 
         val model = BudgetPdfPresentationBuilder.build(budget, company)
 
-        assertEquals("UYU 1029.00", model.lines.first().precioText)
+        assertEquals("1029.00", model.lines.first().precioText)
         assertEquals("UYU 1029.00", model.subtotalNetoText)
         assertEquals("UYU 1029.00", model.importeTotalText)
     }
@@ -69,14 +105,16 @@ class BudgetPdfGeneratorTest {
         val model = BudgetPdfPresentationBuilder.build(budget, company)
 
         assertTrue(model.isBaseCurrency)
-        assertEquals("UYU 100.00", model.lines.first().precioText)
+        assertEquals("100.00", model.lines.first().precioText)
+        assertEquals("44.00", model.lines.first().ivaText)
+        assertEquals("200.00", model.lines.first().importeText)
         assertEquals("UYU 200.00", model.subtotalNetoText)
         assertEquals("UYU 44.00", model.ivaTotalText)
         assertEquals("UYU 244.00", model.importeTotalText)
     }
 
     @Test
-    fun `PDF_FOREIGN_CURRENCY_USES_ORIGINAL_FIELDS - uses original fields 100 USD for foreign currency budget`() {
+    fun `PDF_FOREIGN_LINE_PRICE_HAS_NO_CURRENCY_PREFIX - uses original fields 100 USD without currency prefix`() {
         val company = EmpresaDto(id = 10, nombre = "Empresa Test", moneda = CatalogoItemDto(50, "Pesos Test", "UYU"))
         val budget = BudgetDto(
             id = 102L,
@@ -107,7 +145,9 @@ class BudgetPdfGeneratorTest {
         val model = BudgetPdfPresentationBuilder.build(budget, company)
 
         assertFalse(model.isBaseCurrency)
-        assertEquals("USD 100.00", model.lines.first().precioText)
+        assertEquals("100.00", model.lines.first().precioText)
+        assertEquals("22.00", model.lines.first().ivaText)
+        assertEquals("100.00", model.lines.first().importeText)
         assertEquals("USD 100.00", model.subtotalNetoText)
         assertEquals("USD 22.00", model.ivaTotalText)
         assertEquals("USD 122.00", model.importeTotalText)

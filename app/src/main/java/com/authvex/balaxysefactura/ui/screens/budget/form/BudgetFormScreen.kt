@@ -28,6 +28,8 @@ import com.authvex.balaxysefactura.core.network.CatalogoItemDto
 import com.authvex.balaxysefactura.core.network.ClienteDto
 import com.authvex.balaxysefactura.core.network.ProductoDto
 import com.authvex.balaxysefactura.core.network.TasaCambioSimpleDto
+import com.authvex.balaxysefactura.ui.screens.common.DatePickerField
+import com.authvex.balaxysefactura.ui.screens.common.DropdownSelector
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -118,23 +120,26 @@ fun BudgetFormScreen(
                     Text("Datos del Documento", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(
-                            value = viewModel.fechaEmision,
-                            onValueChange = { viewModel.fechaEmision = it },
-                            label = { Text("Fecha Emisión") },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
+                        DatePickerField(
+                            label = "Fecha Emisión",
+                            valueDateString = viewModel.fechaEmision,
+                            onDateSelected = { viewModel.fechaEmision = it },
+                            modifier = Modifier.weight(1f)
                         )
-                        OutlinedTextField(
-                            value = viewModel.fechaConfirmacion,
-                            onValueChange = { viewModel.onFechaConfirmacionChanged(it) },
-                            label = { Text("Fecha Confirmación") },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
+                        DatePickerField(
+                            label = "Fecha Confirmación",
+                            valueDateString = viewModel.fechaConfirmacion,
+                            onDateSelected = { viewModel.onFechaConfirmacionChanged(it) },
+                            modifier = Modifier.weight(1f)
                         )
                     }
+
+                    DatePickerField(
+                        label = "Fecha Vencimiento",
+                        valueDateString = viewModel.fechaVencimiento,
+                        onDateSelected = { viewModel.fechaVencimiento = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
                     // Selector de Almacén y Moneda
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -317,8 +322,8 @@ fun BudgetFormScreen(
 
     // Line Configuration Dialog (Quantity & Price)
     if (viewModel.configuringProduct != null) {
-        LineConfigurationDialog(
-            product = viewModel.configuringProduct!!,
+        com.authvex.balaxysefactura.ui.screens.common.LineConfigurationDialog(
+            productName = viewModel.configuringProduct!!.nombre,
             quantityText = viewModel.dialogQuantityText,
             priceText = viewModel.dialogUnitPriceText,
             currencySymbol = viewModel.selectedMoneda?.codigo ?: "UYU",
@@ -330,41 +335,6 @@ fun BudgetFormScreen(
             },
             onDismiss = { viewModel.closeLineConfiguration() }
         )
-    }
-}
-
-@Composable
-fun DropdownSelector(
-    label: String,
-    selectedOption: String,
-    options: List<String>,
-    onOptionSelected: (Int) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    Box(modifier = modifier) {
-        OutlinedButton(
-            onClick = { expanded = true },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text(selectedOption, maxLines = 1)
-        }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            options.forEachIndexed { index, option ->
-                DropdownMenuItem(
-                    text = { Text(option) },
-                    onClick = {
-                        onOptionSelected(index)
-                        expanded = false
-                    }
-                )
-            }
-        }
     }
 }
 
@@ -469,77 +439,6 @@ fun ProductSelectDialog(
         confirmButton = {},
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancelar") }
-        }
-    )
-}
-
-@Composable
-fun LineConfigurationDialog(
-    product: ProductoDto,
-    quantityText: String,
-    priceText: String,
-    currencySymbol: String,
-    errorMessage: String?,
-    onQuantityChange: (String) -> Unit,
-    onPriceChange: (String) -> Unit,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(product.nombre, fontWeight = FontWeight.Bold) },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                OutlinedTextField(
-                    value = quantityText,
-                    onValueChange = onQuantityChange,
-                    label = { Text("Cantidad") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-                )
-
-                OutlinedTextField(
-                    value = priceText,
-                    onValueChange = onPriceChange,
-                    label = { Text("Precio Unitario ($currencySymbol)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-                )
-
-                val qty = quantityText.replace(',', '.').toDoubleOrNull() ?: 0.0
-                val price = priceText.replace(',', '.').toDoubleOrNull() ?: 0.0
-                val totalPreview = qty * price
-
-                Text(
-                    text = "Subtotal Estimado: $currencySymbol ${String.format(Locale.US, "%.2f", totalPreview)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                if (!errorMessage.isNullOrBlank()) {
-                    Text(
-                        text = errorMessage,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = onConfirm) {
-                Text("Confirmar Línea")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancelar")
-            }
         }
     )
 }

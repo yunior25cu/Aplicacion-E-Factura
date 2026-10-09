@@ -99,10 +99,10 @@ object BudgetPdfPresentationBuilder {
                     descripcion = item.descripcion ?: item.producto?.nombre ?: "Producto",
                     um = item.um ?: "UN",
                     cantidadText = formatQuantity(item.cantidad),
-                    precioText = "$symbol ${formatMoney(unitPrice)}",
+                    precioText = formatMoney(unitPrice),
                     descuentoPercentText = discountPercentText,
-                    ivaText = "$symbol ${formatMoney(lineIva)}",
-                    importeText = "$symbol ${formatMoney(lineImporte)}"
+                    ivaText = formatMoney(lineIva),
+                    importeText = formatMoney(lineImporte)
                 )
             )
         }

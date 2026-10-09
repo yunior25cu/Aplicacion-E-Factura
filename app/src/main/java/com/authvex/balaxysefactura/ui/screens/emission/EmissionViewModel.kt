@@ -70,10 +70,14 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
 
     // Form State (Returns/NC/ND)
     var idDocumentoOrigen by mutableStateOf<Long?>(null)
-    
-    // Line Configuration State
+
+    // Line Configuration & Edit State
     var productBeingConfigured by mutableStateOf<ProductoDto?>(null)
     var isConfiguringLine by mutableStateOf(false)
+    var editingLineIndex by mutableStateOf<Int?>(null)
+    var dialogQuantityText by mutableStateOf("1")
+    var dialogUnitPriceText by mutableStateOf("0")
+    var lineDialogError by mutableStateOf<String?>(null)
     var lineConfigurationSugerido by mutableStateOf<CfeFiscalIndicadorSugeridoDto?>(null)
     var isResolvingC4 by mutableStateOf(false)
 
@@ -82,6 +86,10 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
 
     init {
         loadPuntosVenta()
+    }
+
+    fun onNotasChanged(value: String) {
+        notas = InvoiceNoteSanitizer.sanitizeInvoiceNote(value)
     }
 
     fun loadPuntosVenta() {
@@ -131,7 +139,7 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
                     ).getOrNull() ?: emptyList()
                 )
                 cachedCatalogs = data
-                
+
                 if (selectedMoneda == null) {
                     selectedMoneda = data.tasaCambios.find { it.codigo == "UYU" } ?: data.tasaCambios.firstOrNull()
                 }
@@ -189,11 +197,15 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
         val type = selectedFiscalType ?: return
         val pos = selectedPOS ?: return
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        
+
+        editingLineIndex = null
         productBeingConfigured = producto
+        dialogQuantityText = "1"
+        dialogUnitPriceText = (producto.precio ?: 0.0).toString()
+        lineDialogError = null
         isResolvingC4 = true
         isConfiguringLine = true
-        
+
         viewModelScope.launch {
             repository.getIndicadorSugerido(
                 cfeCode = type.cfeCode,
@@ -211,24 +223,74 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
         }
     }
 
+    fun openLineEditDialog(index: Int) {
+        if (index in lineas.indices) {
+            val item = lineas[index]
+            editingLineIndex = index
+            productBeingConfigured = item.producto
+            dialogQuantityText = item.cantidad.toString()
+            dialogUnitPriceText = item.precioUnitario.toString()
+            lineDialogError = null
+            isConfiguringLine = true
+        }
+    }
+
     fun confirmLineConfiguration(cantidad: Double, precio: Double, indicadorC4: Int?, sugerido: Int? = null, label: String? = null) {
         val producto = productBeingConfigured ?: return
-        lineas.add(LineaForm(
-            producto = producto, 
-            cantidad = cantidad, 
-            precioUnitario = precio, 
-            indicadorFacturacionC4 = indicadorC4,
-            indicadorFacturacionC4Sugerido = sugerido,
-            indicadorFacturacionC4SugeridoLabel = label
-        ))
+        val editIdx = editingLineIndex
+        if (editIdx != null && editIdx in lineas.indices) {
+            val currentItem = lineas[editIdx]
+            lineas[editIdx] = currentItem.copy(
+                cantidad = cantidad,
+                precioUnitario = precio,
+                indicadorFacturacionC4 = indicadorC4 ?: currentItem.indicadorFacturacionC4
+            )
+        } else {
+            lineas.add(LineaForm(
+                producto = producto,
+                cantidad = cantidad,
+                precioUnitario = precio,
+                indicadorFacturacionC4 = indicadorC4,
+                indicadorFacturacionC4Sugerido = sugerido,
+                indicadorFacturacionC4SugeridoLabel = label
+            ))
+        }
         cancelLineConfiguration()
     }
-    
+
+    fun confirmLineEdit(quantityStr: String, priceStr: String): Boolean {
+        val qty = quantityStr.replace(',', '.').toDoubleOrNull()
+        if (qty == null || qty <= 0) {
+            lineDialogError = "Cantidad debe ser mayor a 0"
+            return false
+        }
+
+        val price = priceStr.replace(',', '.').toDoubleOrNull()
+        if (price == null || price < 0) {
+            lineDialogError = "Precio debe ser mayor o igual a 0"
+            return false
+        }
+
+        val editIdx = editingLineIndex
+        if (editIdx != null && editIdx in lineas.indices) {
+            val currentItem = lineas[editIdx]
+            lineas[editIdx] = currentItem.copy(
+                cantidad = qty,
+                precioUnitario = price
+            )
+        }
+
+        cancelLineConfiguration()
+        return true
+    }
+
     fun cancelLineConfiguration() {
         productBeingConfigured = null
+        editingLineIndex = null
         isConfiguringLine = false
         lineConfigurationSugerido = null
         isResolvingC4 = false
+        lineDialogError = null
     }
 
     fun removeLinea(index: Int) {
@@ -244,7 +306,7 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
         if (type == null || pos == null || type.serie.isNullOrBlank()) {
-            uiState = EmissionUiState.Error(AppError.Validation("Error de ruta fiscal: Serie o Punto de Venta no válidos para el borrador electrónico."))
+            uiState = EmissionUiState.Error(AppError.Validation("Error de ruta fiscal: Serie o Punto de Venta no válidos para el borrador electrónico.\n"))
             return
         }
 
@@ -252,7 +314,7 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             uiState = EmissionUiState.Error(AppError.Validation("e-Factura requiere un cliente con RUT/RUC."))
             return
         }
-        
+
         viewModelScope.launch {
             // 1. Precheck CAE
             uiState = EmissionUiState.Processing("Verificando salud de CAE...")
@@ -279,11 +341,13 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
     private suspend fun createFacturaERP(today: String, type: CfeFiscalDocumentAvailabilityItemDto, pos: PuntoVentaDto): Result<Long> {
         val tasaCambio = selectedMoneda?.tasaPromedio ?: 1.0
         val isBaseCurrency = (tasaCambio == 1.0)
-        
+
         val mappedLineas = mapLineas(isBaseCurrency)
-        
+
         val importeBase = mappedLineas.sumOf { it.importeBase }
         val iva = mappedLineas.sumOf { it.iva }
+
+        val finalNota = InvoiceNoteSanitizer.sanitizeInvoiceNote(notas)
 
         val request = FacturaCreateDto(
             fechaEmision = today,
@@ -299,7 +363,7 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             idAlmacen = selectedAlmacen?.id ?: 0,
             idCliente = selectedCliente?.id ?: 0,
             documentoProductos = mappedLineas,
-            nota = notas,
+            nota = finalNota,
             esElectronico = true,
             idVencimiento = selectedVencimiento?.id,
             idListaPrecio = selectedListaPrecio?.id,
@@ -313,10 +377,10 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
 
     private suspend fun createDevolucionERP(cfeCode: Int, today: String, type: CfeFiscalDocumentAvailabilityItemDto, pos: PuntoVentaDto): Result<Long> {
         if (idDocumentoOrigen == null) return Result.failure(Exception("Debe seleccionar un documento de origen"))
-        
+
         val tasaCambio = selectedMoneda?.tasaPromedio ?: 1.0
         val isBaseCurrency = (tasaCambio == 1.0)
-        
+
         val mappedLineas = mapLineas(isBaseCurrency)
         val importeBase = mappedLineas.sumOf { it.importeBase }
         val iva = mappedLineas.sumOf { it.iva }
@@ -326,6 +390,8 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             103, 113 -> "Debito"
             else -> "Credito"
         }
+
+        val finalNota = InvoiceNoteSanitizer.sanitizeInvoiceNote(notas)
 
         val request = DevolucionCreateDto(
             fechaEmision = today,
@@ -341,7 +407,7 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             idAlmacen = selectedAlmacen?.id ?: 0,
             idCliente = selectedCliente?.id ?: 0,
             documentoProductos = mappedLineas,
-            nota = notas,
+            nota = finalNota,
             esElectronico = true,
             tipoDevolucion = "Factura",
             naturalezaNota = naturaleza,
@@ -358,15 +424,15 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
 
     private fun mapLineas(isBaseCurrency: Boolean): List<FacturaLineaRequest> {
         val tasaCambio = selectedMoneda?.tasaPromedio ?: 1.0
-        return lineas.map { 
+        return lineas.map {
             val price = it.precioUnitario
             val qty = it.cantidad
             val taxRate = it.producto.tasaIva ?: 0.0
-            
+
             val importeBase = price * qty
             val iva = importeBase * taxRate
             val totalConIva = importeBase + iva
-            
+
             FacturaLineaRequest(
                 idProducto = it.producto.id,
                 cantidad = qty,
@@ -396,14 +462,14 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
                 return
             }
 
-            uiState = EmissionUiState.Processing("Encolando emisión fiscal...")
+            uiState = EmissionUiState.Processing("Procesando emisión fiscal...")
             val emitReq = CfeEmitRequest(
                 puntoVentaId = pos.id,
                 seriePreferida = item.serie,
                 cfeCode = item.cfeCode,
                 ncAdjustmentMode = null
             )
-            
+
             repository.emitCfe(documentoId, emitReq).onSuccess { response ->
                 startPolling(documentoId, response.statusUrl)
             }.onFailure { handleFailure(it) }
@@ -416,7 +482,7 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             repository.getCfeStatus(documentoId, statusUrl).onSuccess { status ->
                 uiState = EmissionUiState.Success(
                     documentoId = documentoId,
-                    message = status.mensaje ?: "Emisión encolada/completada."
+                    message = status.mensaje ?: "Emisión completada."
                 )
             }.onFailure { handleFailure(it) }
         }
@@ -427,6 +493,17 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
     private fun handleFailure(error: Throwable) {
         val appError = if (error is AppError) error else AppError.Unexpected(error.message ?: "Error desconocido")
         uiState = EmissionUiState.Error(appError)
+    }
+
+    fun resetToTypeSelection() {
+        selectedFiscalType = null
+        resetForm()
+        val pos = selectedPOS
+        if (pos != null) {
+            selectPOS(pos)
+        } else {
+            resetToStart()
+        }
     }
 
     fun resetToStart() {
