@@ -20,10 +20,11 @@ class CfeRepositoryTest {
         }
         
         override suspend fun getDocument(documentoId: Int): CfeDetailDto = throw NotImplementedError()
+        override suspend fun getFacturaById(id: Long): BudgetDto = BudgetDto(id = id)
         override suspend fun downloadCfePdf(documentId: Long, redirect: Boolean): retrofit2.Response<okhttp3.ResponseBody> = throw NotImplementedError()
         override suspend fun createFactura(request: FacturaCreateDto): Long = shouldThrow?.let { throw it } ?: 1L
         override suspend fun createFacturaElectronicDraft(request: FacturaCreateDto): FacturaResponse = shouldThrow?.let { throw it } ?: FacturaResponse(id = 2L)
-        override suspend fun createDevolucion(request: DevolucionCreateDto): Long = shouldThrow?.let { throw it } ?: 1L
+        override suspend fun createDevolucion(request: DevolucionCreateDto): FacturaResponse = shouldThrow?.let { throw it } ?: FacturaResponse(id = 1L)
         override suspend fun getFactura(documentoId: Long): FacturaResponse = shouldThrow?.let { throw it } ?: FacturaResponse(documentoId)
         override suspend fun getDevolucion(documentoId: Long): FacturaResponse = shouldThrow?.let { throw it } ?: FacturaResponse(documentoId)
 

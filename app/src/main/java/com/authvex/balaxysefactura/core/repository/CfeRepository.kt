@@ -23,6 +23,15 @@ open class CfeRepository(private val api: CfeApi) {
         }
     }
 
+    open suspend fun getFacturaById(id: Long): Result<BudgetDto> {
+        return try {
+            val response = api.getFacturaById(id)
+            Result.success(response)
+        } catch (e: Exception) {
+            Result.failure(ErrorMapper.fromThrowable(e))
+        }
+    }
+
     // --- Emisión ERP ---
     open suspend fun createFactura(request: FacturaCreateDto): Result<Long> {
         return try {
@@ -44,8 +53,8 @@ open class CfeRepository(private val api: CfeApi) {
 
     open suspend fun createDevolucion(request: DevolucionCreateDto): Result<Long> {
         return try {
-            val documentoId = api.createDevolucion(request)
-            Result.success(documentoId)
+            val response = api.createDevolucion(request)
+            Result.success(response.getEffectiveId())
         } catch (e: Exception) {
             Result.failure(ErrorMapper.fromThrowable(e))
         }

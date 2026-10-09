@@ -17,7 +17,7 @@ interface CfeApi {
     suspend fun createFacturaElectronicDraft(@Body request: FacturaCreateDto): FacturaResponse
 
     @POST("Devolucion")
-    suspend fun createDevolucion(@Body request: DevolucionCreateDto): Long
+    suspend fun createDevolucion(@Body request: DevolucionCreateDto): FacturaResponse
 
     @GET("Factura/{documentoId}")
     suspend fun getFactura(@Path("documentoId") documentoId: Long): FacturaResponse
@@ -90,6 +90,9 @@ interface CfeApi {
 
     @GET("Cfe/documento/{documentoId}/status/sync")
     suspend fun getCfeStatusSync(@Path("documentoId") documentoId: Long): CfeStatusResponse
+
+    @GET("Factura/{id}")
+    suspend fun getFacturaById(@Path("id") id: Long): BudgetDto
 
     @Streaming
     @GET("Cfe/documento/{id}/download/pdf")

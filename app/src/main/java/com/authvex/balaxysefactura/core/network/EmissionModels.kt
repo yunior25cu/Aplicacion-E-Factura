@@ -139,7 +139,7 @@ data class FacturaLineaRequest(
     val iva: Double,
     val descuento: Double = 0.0,
     val ivaOriginal: Double,
-    val descuentoOriginal: Double,
+    val descuentoOriginal: Double = 0.0,
     val precioBaseConIva: Double,
     val importeBaseConIva: Double,
     val precioOriginal: Double,
@@ -147,6 +147,26 @@ data class FacturaLineaRequest(
     val precioOriginalConIva: Double,
     val importeOriginalConIva: Double,
     val indicadorFacturacionC4: Int? = null
+)
+
+@Serializable
+data class DevolucionLineaRequest(
+    val idProducto: Int,
+    val cantidad: Double,
+    val devuelto: Double,
+    val precioBase: Double,
+    val importeBase: Double,
+    val iva: Double,
+    val ivaOriginal: Double,
+    val precioBaseConIva: Double,
+    val importeBaseConIva: Double,
+    val precioOriginal: Double,
+    val importeOriginal: Double,
+    val precioOriginalConIva: Double,
+    val importeOriginalConIva: Double,
+    val descuento: Double? = 0.0,
+    val descuentoOriginal: Double? = 0.0,
+    val idSkuVariante: Long? = null
 )
 
 @Serializable
@@ -163,7 +183,10 @@ data class DevolucionCreateDto(
     val importeTotalOriginal: Double,
     val idAlmacen: Int,
     val idCliente: Int,
-    val documentoProductos: List<FacturaLineaRequest>,
+    val documentoProductos: List<DevolucionLineaRequest>,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
+    val cantidadPrecio: Boolean = true,
     val numeroReferencia: String? = null,
     val nota: String? = null,
     val preciosIncluyenIva: Boolean? = true,
@@ -181,8 +204,10 @@ data class DevolucionCreateDto(
     val ajusteRedondeoOriginal: Double = 0.0,
     val idCentroCosto: Int? = null,
     val idVendedor: Int? = null,
-    val tipoDevolucion: String = "Factura",
-    val naturalezaNota: String,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
+    val tipoDevolucion: Int = 2,
+    val naturalezaNota: Int,
     val idDocumentoOrigen: Long,
     // Intención Fiscal
     val cfeCodeIntent: Int? = null,

@@ -1,5 +1,6 @@
 package com.authvex.balaxysefactura.ui.screens.emission
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -147,6 +148,91 @@ fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvaila
         ) {
             // Cabecera de Contexto Fiscal (Solo Lectura - Inalterada)
             FiscalContextCard(pos, type)
+
+            // CARD DOCUMENTO ORIGEN (Solo para NC / ND: 102, 103, 112, 113)
+            if (viewModel.isOriginRequired()) {
+                var showOriginDialog by remember { mutableStateOf(false) }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Documento Origen", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            if (viewModel.selectedOriginCfe != null) {
+                                TextButton(onClick = { viewModel.clearOriginDocument() }) {
+                                    Text("Quitar", color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+
+                        if (viewModel.selectedOriginCfe != null) {
+                            val cfe = viewModel.selectedOriginCfe!!
+                            val originDoc = viewModel.selectedOriginDoc
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = "${getCfeTypeLabel(cfe.cfeCode)} ${cfe.serie ?: ""}-${cfe.numero ?: cfe.documentoId}",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Cliente: ${cfe.receptor ?: originDoc?.cliente?.nombre ?: "Sin cliente"}",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    Text(
+                                        text = "Fecha Emisión: ${cfe.fechaEmision?.take(10) ?: originDoc?.fechaEmision?.take(10) ?: "-"}",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    Text(
+                                        text = "Total: ${cfe.monedaSimbolo ?: "$"} ${String.format(Locale.US, "%.2f", cfe.importeTotal ?: originDoc?.importeTotalBase ?: 0.0)}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        } else {
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.searchOriginCfes("")
+                                    showOriginDialog = true
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Default.Receipt, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Seleccionar Comprobante Origen")
+                            }
+                        }
+                    }
+                }
+
+                if (showOriginDialog) {
+                    OriginCfeSelectDialog(
+                        originCode = viewModel.resolveOriginCfeCode(),
+                        originCfes = viewModel.originCfeSearchResults,
+                        isSearching = viewModel.isSearchingOriginCfe,
+                        onSearch = { viewModel.searchOriginCfes(it) },
+                        onSelect = { cfe ->
+                            viewModel.selectOriginDocument(cfe)
+                            showOriginDialog = false
+                        },
+                        onDismiss = { showOriginDialog = false }
+                    )
+                }
+            }
 
             // CARD 1 — CLIENTE
             Card(
@@ -309,7 +395,7 @@ fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvaila
                 }
                 Button(
                     onClick = { viewModel.proceedToEmission() },
-                    enabled = viewModel.selectedCliente != null && viewModel.lineas.isNotEmpty(),
+                    enabled = viewModel.selectedCliente != null && viewModel.lineas.isNotEmpty() && (!viewModel.isOriginRequired() || viewModel.idDocumentoOrigen != null),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text("EMITIR AHORA")
@@ -340,6 +426,67 @@ fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvaila
 }
 
 @Composable
+fun OriginCfeSelectDialog(
+    originCode: Int,
+    originCfes: List<CfeSummaryDto>,
+    isSearching: Boolean,
+    onSearch: (String) -> Unit,
+    onSelect: (CfeSummaryDto) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var query by remember { mutableStateOf("") }
+    val label = if (originCode == 111) "e-Factura (111)" else "e-Ticket (101)"
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f)) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Seleccionar Origen ($label)", style = MaterialTheme.typography.titleLarge)
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = {
+                        query = it
+                        onSearch(it)
+                    },
+                    label = { Text("Buscar por número, serie o receptor...") },
+                    leadingIcon = { Icon(Icons.Default.Search, null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                if (isSearching) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
+                }
+                if (!isSearching && originCfes.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "No se encontraron CFE origen disponibles.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.weight(1f)) {
+                        itemsIndexed(originCfes) { _, cfe ->
+                            ListItemContent(
+                                headline = "${getCfeTypeLabel(cfe.cfeCode)} ${cfe.serie ?: ""}-${cfe.numero ?: cfe.documentoId}",
+                                supporting = "Cliente: ${cfe.receptor ?: "Sin cliente"} | Total: ${cfe.monedaSimbolo ?: "$"} ${cfe.importeTotal ?: 0.0}",
+                                trailing = {
+                                    Button(onClick = { onSelect(cfe) }) {
+                                        Text("Seleccionar")
+                                    }
+                                }
+                            )
+                            HorizontalDivider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun FiscalContextCard(pos: PuntoVentaDto, type: CfeFiscalDocumentAvailabilityItemDto) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -366,6 +513,33 @@ fun FiscalContextCard(pos: PuntoVentaDto, type: CfeFiscalDocumentAvailabilityIte
                 )
             }
         }
+    }
+}
+
+private fun getCfeTypeLabel(code: Int?): String {
+    return when (code) {
+        101 -> "e-Ticket"
+        102 -> "NC e-Ticket"
+        103 -> "ND e-Ticket"
+        111 -> "e-Factura"
+        112 -> "NC e-Factura"
+        113 -> "ND e-Factura"
+        121 -> "e-Factura Exp."
+        122 -> "NC e-Factura Exp."
+        123 -> "ND e-Factura Exp."
+        124 -> "e-Remito Exp."
+        131 -> "e-Ticket CA"
+        132 -> "NC e-Ticket CA"
+        133 -> "ND e-Ticket CA"
+        141 -> "e-Factura CA"
+        142 -> "NC e-Factura CA"
+        143 -> "ND e-Factura CA"
+        151 -> "e-Boleta Entrada"
+        152 -> "NC e-Boleta Entrada"
+        153 -> "ND e-Boleta Entrada"
+        181 -> "e-Remito"
+        182 -> "e-Resguardo"
+        else -> if (code != null) "CFE $code" else "CFE"
     }
 }
 

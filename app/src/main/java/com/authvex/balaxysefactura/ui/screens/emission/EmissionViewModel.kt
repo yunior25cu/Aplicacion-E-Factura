@@ -38,6 +38,7 @@ data class LineaForm(
     var cantidad: Double,
     var precioUnitario: Double,
     val descuento: Double = 0.0,
+    var idSkuVariante: Long? = null,
     var indicadorFacturacionC4: Int? = null,
     var indicadorFacturacionC4Sugerido: Int? = null,
     var indicadorFacturacionC4SugeridoLabel: String? = null
@@ -74,8 +75,13 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
     var isSearching by mutableStateOf(false)
     private var searchJob: Job? = null
 
-    // Form State (Returns/NC/ND)
+    // Form State (Returns/NC/ND - Origin Document Selection)
     var idDocumentoOrigen by mutableStateOf<Long?>(null)
+    var selectedOriginCfe by mutableStateOf<CfeSummaryDto?>(null)
+    var selectedOriginDoc by mutableStateOf<BudgetDto?>(null)
+    var originCfeSearchResults by mutableStateOf<List<CfeSummaryDto>>(emptyList())
+    var isSearchingOriginCfe by mutableStateOf(false)
+        private set
 
     // Line Configuration & Edit State
     var productBeingConfigured by mutableStateOf<ProductoDto?>(null)
@@ -96,12 +102,111 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
 
     private fun getTodayDate(): String = dateFormat.format(Date())
 
+    fun isOriginRequired(): Boolean {
+        val code = selectedFiscalType?.cfeCode ?: 0
+        return code == 102 || code == 103 || code == 112 || code == 113
+    }
+
+    fun resolveOriginCfeCode(): Int {
+        return when (selectedFiscalType?.cfeCode) {
+            102, 103 -> 101 // NC/ND e-Ticket references e-Ticket 101
+            112, 113 -> 111 // NC/ND e-Factura references e-Factura 111
+            else -> 101
+        }
+    }
+
+    fun searchOriginCfes(query: String) {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            delay(300)
+            isSearchingOriginCfe = true
+            val originCode = resolveOriginCfeCode()
+            repository.searchDocuments(
+                query = query.ifBlank { null },
+                page = 1
+            ).onSuccess { response ->
+                // Filter origin documents by CFE code (101 or 111)
+                originCfeSearchResults = response.items.filter { it.cfeCode == originCode }
+            }.onFailure {
+                originCfeSearchResults = emptyList()
+            }
+            isSearchingOriginCfe = false
+        }
+    }
+
+    fun selectOriginDocument(cfe: CfeSummaryDto) {
+        selectedOriginCfe = cfe
+        viewModelScope.launch {
+            uiState = EmissionUiState.Processing("Cargando documento origen...")
+            repository.getFacturaById(cfe.documentoId.toLong()).onSuccess { saleDoc ->
+                selectedOriginDoc = saleDoc
+                idDocumentoOrigen = saleDoc.id
+
+                selectedCliente = saleDoc.cliente
+                selectedAlmacen = saleDoc.almacen
+                preciosIncluyenIva = saleDoc.preciosIncluyenIva
+
+                val docCurrency = saleDoc.moneda
+                if (docCurrency != null) {
+                    selectedMoneda = TasaCambioSimpleDto(
+                        id = docCurrency.id,
+                        codigo = docCurrency.codigo ?: "UYU",
+                        denominacion = docCurrency.nombre,
+                        simbolo = "$",
+                        decimales = 2,
+                        tasaPromedio = saleDoc.tasaCambio
+                    )
+                }
+
+                val newLines = saleDoc.documentoProductos.map { item ->
+                    val unitPrice = item.precioBase
+                    val prod = item.producto ?: ProductoDto(
+                        id = item.idProducto?.toInt() ?: 0,
+                        nombre = item.descripcion ?: "Producto",
+                        precio = unitPrice,
+                        tasaIva = item.porcentajeIva
+                    )
+                    LineaForm(
+                        producto = prod,
+                        cantidad = item.cantidad,
+                        precioUnitario = unitPrice,
+                        indicadorFacturacionC4 = item.indicadorFacturacionC4
+                    )
+                }
+
+                lineas.clear()
+                lineas.addAll(newLines)
+
+                val type = selectedFiscalType
+                val pos = selectedPOS
+                val catalogs = cachedCatalogs
+                if (type != null && pos != null && catalogs != null) {
+                    uiState = EmissionUiState.FillForm(type, pos, catalogs)
+                }
+            }.onFailure { error ->
+                handleFailure(error)
+            }
+        }
+    }
+
+    fun clearOriginDocument() {
+        selectedOriginCfe = null
+        selectedOriginDoc = null
+        idDocumentoOrigen = null
+        lineas.clear()
+        selectedCliente = null
+    }
+
     fun onNotasChanged(value: String) {
         notas = InvoiceNoteSanitizer.sanitizeInvoiceNote(value)
     }
 
     fun onFechaConfirmacionChanged(newDate: String) {
         fechaConfirmacion = newDate
+        if (isOriginRequired() && idDocumentoOrigen != null) {
+            // Retain historical rate from origin document for NC/ND
+            return
+        }
         viewModelScope.launch {
             repository.getTasaCambios(newDate).onSuccess { tasas ->
                 cachedCatalogs = cachedCatalogs?.copy(tasaCambios = tasas)
@@ -140,6 +245,7 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
 
     fun selectFiscalType(item: CfeFiscalDocumentAvailabilityItemDto) {
         selectedFiscalType = item
+        clearOriginDocument()
         loadCatalogsAndGoToForm(item)
     }
 
@@ -188,7 +294,7 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             isSearching = true
             repository.getClientes(query.ifBlank { null }).onSuccess { clients ->
                 val cfeCode = selectedFiscalType?.cfeCode
-                clientSearchResults = if (cfeCode == 111) {
+                clientSearchResults = if (cfeCode == 111 || cfeCode == 112 || cfeCode == 113) {
                     clients.filter { isClientCompatibleWithCfe(it.tipoDocumentoIdentificacion, 111) }
                 } else {
                     clients
@@ -327,6 +433,11 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             return
         }
 
+        if (isOriginRequired() && idDocumentoOrigen == null) {
+            uiState = EmissionUiState.Error(AppError.Validation("Debe seleccionar un documento de origen"))
+            return
+        }
+
         if (type.cfeCode == 111 && !isClientCompatibleWithCfe(cliente?.tipoDocumentoIdentificacion, 111)) {
             uiState = EmissionUiState.Error(AppError.Validation("e-Factura requiere un cliente con RUT/RUC."))
             return
@@ -404,14 +515,14 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
         val tasaCambio = selectedMoneda?.tasaPromedio ?: 1.0
         val isBaseCurrency = (tasaCambio == 1.0)
 
-        val mappedLineas = mapLineas(isBaseCurrency)
+        val mappedLineas = mapDevolucionLineas(isBaseCurrency)
         val importeBase = mappedLineas.sumOf { it.importeBase }
         val iva = mappedLineas.sumOf { it.iva }
 
         val naturaleza = when (cfeCode) {
-            102, 112 -> "Credito"
-            103, 113 -> "Debito"
-            else -> "Credito"
+            102, 112 -> 1
+            103, 113 -> 2
+            else -> 1
         }
 
         val finalNota = InvoiceNoteSanitizer.sanitizeInvoiceNote(notas)
@@ -430,10 +541,11 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             idAlmacen = selectedAlmacen?.id ?: 0,
             idCliente = selectedCliente?.id ?: 0,
             documentoProductos = mappedLineas,
+            cantidadPrecio = true,
             nota = finalNota,
             preciosIncluyenIva = preciosIncluyenIva,
             esElectronico = true,
-            tipoDevolucion = "Factura",
+            tipoDevolucion = 2,
             naturalezaNota = naturaleza,
             idDocumentoOrigen = idDocumentoOrigen!!,
             idVencimiento = selectedVencimiento?.id,
@@ -444,6 +556,49 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             condicionPagoComercial = selectedCondicionPago.apiValue
         )
         return repository.createDevolucion(request)
+    }
+
+    private fun mapDevolucionLineas(isBaseCurrency: Boolean): List<DevolucionLineaRequest> {
+        val tasaCambio = selectedMoneda?.tasaPromedio ?: 1.0
+        return lineas.map {
+            val price = it.precioUnitario
+            val qty = it.cantidad
+            val taxRate = it.producto.tasaIva ?: 0.0
+
+            val lineTotalInput = price * qty
+            val importeBase: Double
+            val iva: Double
+
+            if (preciosIncluyenIva && taxRate > 0) {
+                importeBase = lineTotalInput / (1 + taxRate)
+                iva = lineTotalInput - importeBase
+            } else {
+                importeBase = lineTotalInput
+                iva = importeBase * taxRate
+            }
+            val totalConIva = importeBase + iva
+
+            val precioBaseCalculated = if (preciosIncluyenIva && taxRate > 0) price / (1 + taxRate) else price
+
+            DevolucionLineaRequest(
+                idProducto = it.producto.id,
+                cantidad = qty,
+                devuelto = qty,
+                precioBase = precioBaseCalculated,
+                importeBase = importeBase,
+                iva = iva,
+                descuento = it.descuento,
+                ivaOriginal = if (isBaseCurrency) 0.0 else (iva / tasaCambio),
+                descuentoOriginal = if (isBaseCurrency) 0.0 else (it.descuento / tasaCambio),
+                precioBaseConIva = if (preciosIncluyenIva || taxRate == 0.0) price else price * (1 + taxRate),
+                importeBaseConIva = totalConIva,
+                precioOriginal = if (isBaseCurrency) 0.0 else (precioBaseCalculated / tasaCambio),
+                importeOriginal = if (isBaseCurrency) 0.0 else (importeBase / tasaCambio),
+                precioOriginalConIva = if (isBaseCurrency) 0.0 else ((if (preciosIncluyenIva || taxRate == 0.0) price else price * (1 + taxRate)) / tasaCambio),
+                importeOriginalConIva = if (isBaseCurrency) 0.0 else (totalConIva / tasaCambio),
+                idSkuVariante = it.idSkuVariante
+            )
+        }
     }
 
     private fun mapLineas(isBaseCurrency: Boolean): List<FacturaLineaRequest> {
@@ -553,8 +708,11 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
         lineas.clear()
         notas = ""
         idDocumentoOrigen = null
+        selectedOriginCfe = null
+        selectedOriginDoc = null
         clientSearchResults = emptyList()
         productSearchResults = emptyList()
+        originCfeSearchResults = emptyList()
         selectedMoneda = null
         selectedCondicionPago = CondicionPagoComercial.CONTADO
         cancelLineConfiguration()
