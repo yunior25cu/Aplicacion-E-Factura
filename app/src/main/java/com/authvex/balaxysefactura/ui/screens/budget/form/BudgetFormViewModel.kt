@@ -76,6 +76,7 @@ class BudgetFormViewModel(
     var almacenesList by mutableStateOf<List<CatalogoItemDto>>(emptyList())
     var tasasCambioList by mutableStateOf<List<TasaCambioSimpleDto>>(emptyList())
     var productosList by mutableStateOf<List<ProductoDto>>(emptyList())
+    var indicadoresC4List by mutableStateOf<List<CfeFiscalIndicadorFacturacionDto>>(emptyList())
 
     var isCatalogsLoading by mutableStateOf(false)
     private var clientSearchJob: Job? = null
@@ -124,6 +125,9 @@ class BudgetFormViewModel(
             }
 
             cfeRepository.getProductos().onSuccess { productosList = it }
+            cfeRepository.getIndicadoresFacturacion(111, 1, "A", fechaConfirmacion).onSuccess {
+                if (it != null) indicadoresC4List = it
+            }
             isCatalogsLoading = false
         }
     }
@@ -314,7 +318,7 @@ class BudgetFormViewModel(
         lineDialogError = null
     }
 
-    fun confirmLineConfiguration(quantityStr: String, priceStr: String): Boolean {
+    fun confirmLineConfiguration(quantityStr: String, priceStr: String, indicadorC4: Int? = null): Boolean {
         val qty = quantityStr.replace(',', '.').toDoubleOrNull()
         if (qty == null || qty <= 0) {
             lineDialogError = "Cantidad debe ser un número válido mayor a 0"
@@ -335,10 +339,16 @@ class BudgetFormViewModel(
             currentList[index] = currentList[index].copy(
                 producto = prod,
                 cantidad = qty,
-                precioUnitario = price
+                precioUnitario = price,
+                indicadorFacturacionC4 = indicadorC4 ?: currentList[index].indicadorFacturacionC4
             )
         } else {
-            currentList.add(BudgetFormLineItem(producto = prod, cantidad = qty, precioUnitario = price))
+            currentList.add(BudgetFormLineItem(
+                producto = prod,
+                cantidad = qty,
+                precioUnitario = price,
+                indicadorFacturacionC4 = indicadorC4
+            ))
         }
 
         lineItems.value = currentList
@@ -478,7 +488,8 @@ class BudgetFormViewModel(
                         precioOriginal = if (isBaseCurrency) 0.0 else item.precioUnitario,
                         importeOriginal = if (isBaseCurrency) 0.0 else lineSubtotalDocCurrency,
                         precioOriginalConIva = if (isBaseCurrency) 0.0 else (if (taxRate == 0.0 || preciosIncluyenIva) item.precioUnitario else item.precioUnitario * (1 + taxRate)),
-                        importeOriginalConIva = if (isBaseCurrency) 0.0 else lineTotalWithIvaDocCurrency
+                        importeOriginalConIva = if (isBaseCurrency) 0.0 else lineTotalWithIvaDocCurrency,
+                        indicadorFacturacionC4 = item.indicadorFacturacionC4
                     )
                 }
 

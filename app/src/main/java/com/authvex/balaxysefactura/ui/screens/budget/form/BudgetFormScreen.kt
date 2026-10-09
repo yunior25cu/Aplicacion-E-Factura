@@ -227,6 +227,13 @@ fun BudgetFormScreen(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                     )
+                                    if (line.indicadorFacturacionC4 != null) {
+                                        AssistChip(
+                                            onClick = {},
+                                            label = { Text("C4: ${line.indicadorFacturacionC4}") },
+                                            colors = AssistChipDefaults.assistChipColors(labelColor = MaterialTheme.colorScheme.secondary)
+                                        )
+                                    }
                                     Text(
                                         text = "Total Línea: ${viewModel.selectedMoneda?.codigo ?: "UYU"} ${String.format(Locale.US, "%.2f", lineTotal)}",
                                         style = MaterialTheme.typography.labelMedium,
@@ -309,8 +316,9 @@ fun BudgetFormScreen(
 
     // Product Selection Dialog
     if (showProductDialog) {
-        ProductSelectDialog(
-            productos = viewModel.productosList,
+        com.authvex.balaxysefactura.ui.screens.common.SharedProductSelectDialog(
+            products = viewModel.productosList,
+            isSearching = false,
             onSearch = { viewModel.onProductQueryChanged(it) },
             onSelect = { product ->
                 showProductDialog = false
@@ -320,18 +328,19 @@ fun BudgetFormScreen(
         )
     }
 
-    // Line Configuration Dialog (Quantity & Price)
+    // Line Configuration Dialog (Quantity, Price & Indicador C4)
     if (viewModel.configuringProduct != null) {
-        com.authvex.balaxysefactura.ui.screens.common.LineConfigurationDialog(
-            productName = viewModel.configuringProduct!!.nombre,
-            quantityText = viewModel.dialogQuantityText,
-            priceText = viewModel.dialogUnitPriceText,
+        val prod = viewModel.configuringProduct!!
+        com.authvex.balaxysefactura.ui.screens.common.SharedLineConfiguratorDialog(
+            productName = prod.nombre,
+            initialQuantity = viewModel.dialogQuantityText,
+            initialPrice = viewModel.dialogUnitPriceText,
             currencySymbol = viewModel.selectedMoneda?.codigo ?: "UYU",
+            indicadoresC4 = viewModel.indicadoresC4List,
+            initialC4 = viewModel.editingLineIndex?.let { viewModel.lineItems.value.getOrNull(it)?.indicadorFacturacionC4 },
             errorMessage = viewModel.lineDialogError,
-            onQuantityChange = { viewModel.dialogQuantityText = it },
-            onPriceChange = { viewModel.dialogUnitPriceText = it },
-            onConfirm = {
-                viewModel.confirmLineConfiguration(viewModel.dialogQuantityText, viewModel.dialogUnitPriceText)
+            onConfirm = { qty, price, c4 ->
+                viewModel.confirmLineConfiguration(qty.toString(), price.toString(), c4)
             },
             onDismiss = { viewModel.closeLineConfiguration() }
         )
@@ -376,59 +385,6 @@ fun ClientSelectDialog(
                                 if (!cliente.documentNumber.isNullOrBlank()) {
                                     Text("Doc: ${cliente.documentNumber}", style = MaterialTheme.typography.bodySmall)
                                 }
-                            }
-                        }
-                        HorizontalDivider()
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar") }
-        }
-    )
-}
-
-@Composable
-fun ProductSelectDialog(
-    productos: List<ProductoDto>,
-    onSearch: (String) -> Unit,
-    onSelect: (ProductoDto) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var searchQuery by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Agregar Producto") },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = {
-                        searchQuery = it
-                        onSearch(it)
-                    },
-                    placeholder = { Text("Buscar producto...") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                Column(modifier = Modifier.height(250.dp).verticalScroll(rememberScrollState())) {
-                    productos.forEach { prod ->
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelect(prod) }
-                                .padding(vertical = 8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(prod.nombre, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                                Text("UYU ${String.format(Locale.US, "%.2f", prod.precio ?: 0.0)}", fontWeight = FontWeight.Medium)
                             }
                         }
                         HorizontalDivider()

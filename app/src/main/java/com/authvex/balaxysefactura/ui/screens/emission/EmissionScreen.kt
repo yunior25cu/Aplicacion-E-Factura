@@ -444,16 +444,18 @@ fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvaila
     }
 
     if (viewModel.editingLineIndex != null && viewModel.productBeingConfigured != null) {
-        com.authvex.balaxysefactura.ui.screens.common.LineConfigurationDialog(
-            productName = viewModel.productBeingConfigured!!.nombre,
-            quantityText = viewModel.dialogQuantityText,
-            priceText = viewModel.dialogUnitPriceText,
+        val prod = viewModel.productBeingConfigured!!
+        com.authvex.balaxysefactura.ui.screens.common.SharedLineConfiguratorDialog(
+            productName = prod.nombre,
+            initialQuantity = viewModel.dialogQuantityText,
+            initialPrice = viewModel.dialogUnitPriceText,
             currencySymbol = viewModel.selectedMoneda?.codigo ?: "UYU",
+            indicadoresC4 = viewModel.cachedCatalogs?.indicadoresC4 ?: emptyList(),
+            initialC4 = viewModel.lineas.getOrNull(viewModel.editingLineIndex!!)?.indicadorFacturacionC4,
+            isResolvingC4 = viewModel.isResolvingC4,
             errorMessage = viewModel.lineDialogError,
-            onQuantityChange = { viewModel.dialogQuantityText = it },
-            onPriceChange = { viewModel.dialogUnitPriceText = it },
-            onConfirm = {
-                viewModel.confirmLineEdit(viewModel.dialogQuantityText, viewModel.dialogUnitPriceText)
+            onConfirm = { qty, price, c4 ->
+                viewModel.confirmLineConfiguration(qty, price, c4)
             },
             onDismiss = { viewModel.cancelLineConfiguration() }
         )
@@ -756,98 +758,33 @@ fun ListItemContent(headline: String, supporting: String? = null, trailing: @Com
 
 @Composable
 fun ProductSearchAndConfigDialog(viewModel: EmissionViewModel) {
-    Dialog(onDismissRequest = { viewModel.cancelLineConfiguration() }) {
-        Card(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f)) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                if (viewModel.productBeingConfigured == null) {
-                    LaunchedEffect(Unit) {
-                        viewModel.initProductSearch()
-                    }
-                    Text("Seleccionar Producto", style = MaterialTheme.typography.titleLarge)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    var query by remember { mutableStateOf("") }
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = { query = it; viewModel.searchProducts(it) },
-                        leadingIcon = { Icon(Icons.Default.Search, null) },
-                        trailingIcon = {
-                            if (query.isNotEmpty()) {
-                                IconButton(onClick = { query = ""; viewModel.searchProducts("") }) {
-                                    Icon(Icons.Default.Clear, contentDescription = "Limpiar")
-                                }
-                            }
-                        },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Buscar por nombre, SKU o código...") }
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    if (viewModel.isSearching) {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
-                    }
-                    if (!viewModel.isSearching && viewModel.productSearchResults.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            Text(
-                                text = if (query.isEmpty()) "No hay productos disponibles" else "No se encontraron productos para '$query'",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    } else {
-                        LazyColumn(modifier = Modifier.weight(1f)) {
-                            itemsIndexed(viewModel.productSearchResults) { _, p ->
-                                ListItem(
-                                    headlineContent = { Text(p.nombre, fontWeight = FontWeight.SemiBold) },
-                                    supportingContent = { Text("Código: ${p.codigo ?: "-"} | Precio: $ ${p.precio ?: 0.0}") },
-                                    modifier = Modifier.clickable { viewModel.startLineConfiguration(p) }
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    LineConfigurator(viewModel)
-                }
-            }
+    if (viewModel.productBeingConfigured == null) {
+        LaunchedEffect(Unit) {
+            viewModel.initProductSearch()
         }
-    }
-}
-
-@Composable
-fun LineConfigurator(viewModel: EmissionViewModel) {
-    val product = viewModel.productBeingConfigured!!
-    var qty by remember { mutableStateOf("1") }
-    var price by remember { mutableStateOf(product.precio?.toString() ?: "0") }
-    var selectedC4 by remember { mutableStateOf<Int?>(null) }
-
-    LaunchedEffect(viewModel.lineConfigurationSugerido) {
-        selectedC4 = viewModel.lineConfigurationSugerido?.persistedValue
-    }
-
-    Column {
-        Text(product.nombre, style = MaterialTheme.typography.titleLarge)
-        Spacer(modifier = Modifier.height(16.dp))
-        OutlinedTextField(value = qty, onValueChange = { qty = it }, label = { Text("Cantidad") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = price, onValueChange = { price = it }, label = { Text("Precio Unitario") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
-        
-        if (viewModel.isResolvingC4) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
-        }
-
-        viewModel.cachedCatalogs?.let { catalogs ->
-            val selectedC4Obj = catalogs.indicadoresC4.find { it.id == selectedC4 }
-            DropdownSelector(
-                label = "Indicador Facturación (C4)",
-                selectedOption = selectedC4Obj?.name ?: "Indicador C4",
-                options = catalogs.indicadoresC4.map { it.name },
-                onOptionSelected = { index -> selectedC4 = catalogs.indicadoresC4[index].id }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-        Button(
-            onClick = { viewModel.confirmLineConfiguration(qty.toDoubleOrNull() ?: 0.0, price.toDoubleOrNull() ?: 0.0, selectedC4) },
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("CONFIRMAR") }
+        com.authvex.balaxysefactura.ui.screens.common.SharedProductSelectDialog(
+            products = viewModel.productSearchResults,
+            isSearching = viewModel.isSearching,
+            onSearch = { viewModel.searchProducts(it) },
+            onSelect = { p -> viewModel.startLineConfiguration(p) },
+            onDismiss = { viewModel.cancelLineConfiguration() }
+        )
+    } else {
+        val prod = viewModel.productBeingConfigured!!
+        com.authvex.balaxysefactura.ui.screens.common.SharedLineConfiguratorDialog(
+            productName = prod.nombre,
+            initialQuantity = viewModel.dialogQuantityText,
+            initialPrice = viewModel.dialogUnitPriceText,
+            currencySymbol = viewModel.selectedMoneda?.codigo ?: "UYU",
+            indicadoresC4 = viewModel.cachedCatalogs?.indicadoresC4 ?: emptyList(),
+            initialC4 = viewModel.lineConfigurationSugerido?.persistedValue,
+            isResolvingC4 = viewModel.isResolvingC4,
+            errorMessage = viewModel.lineDialogError,
+            onConfirm = { qty, price, c4 ->
+                viewModel.confirmLineConfiguration(qty, price, c4)
+            },
+            onDismiss = { viewModel.cancelLineConfiguration() }
+        )
     }
 }
 

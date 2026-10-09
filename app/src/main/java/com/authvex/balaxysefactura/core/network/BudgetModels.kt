@@ -124,7 +124,8 @@ data class BudgetDocumentProductCreateDto(
     val precioOriginal: Double,
     val importeOriginal: Double,
     val precioOriginalConIva: Double,
-    val importeOriginalConIva: Double
+    val importeOriginalConIva: Double,
+    val indicadorFacturacionC4: Int? = null
 )
 
 @Serializable
