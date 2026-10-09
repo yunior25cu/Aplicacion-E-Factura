@@ -1,12 +1,16 @@
 package com.authvex.balaxysefactura.core.network
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
 data class CfeSearchRequest(
-    val pagina: Int = 1,
-    val registrosPorPagina: Int = 20,
-    val filtro: String? = null
+    @SerialName("offset")
+    val offset: Int = 0,
+    @SerialName("limit")
+    val limit: Int = 20,
+    @SerialName("query")
+    val query: String? = null
 )
 
 @Serializable

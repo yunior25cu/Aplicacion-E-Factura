@@ -6,7 +6,8 @@ open class CfeRepository(private val api: CfeApi) {
 
     open suspend fun searchDocuments(query: String? = null, page: Int = 1): Result<CfeSearchResponse> {
         return try {
-            val response = api.search(CfeSearchRequest(pagina = page, filtro = query))
+            val offset = (page - 1) * 20
+            val response = api.search(CfeSearchRequest(offset = offset, limit = 20, query = query))
             Result.success(response)
         } catch (e: Exception) {
             Result.failure(ErrorMapper.fromThrowable(e))

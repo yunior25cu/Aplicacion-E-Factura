@@ -146,24 +146,6 @@ fun CfeDetailContent(
             }
         }
 
-        // Share Action Button
-        OutlinedButton(
-            onClick = onSharePdf,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-            shape = RoundedCornerShape(12.dp),
-            enabled = !isSharingPdf
-        ) {
-            if (isSharingPdf) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp))
-            } else {
-                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Compartir PDF", fontWeight = FontWeight.Bold)
-            }
-        }
-
         DetailSectionCard(title = "Receptor") {
             DetailItemRow(label = "Nombre / Razón Social", value = doc.receptor)
             DetailItemRow(label = "Estado Receptor", value = getEstadoReceptorLabel(doc.estadoReceptor))
@@ -208,6 +190,24 @@ fun CfeDetailContent(
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
+            }
+        }
+
+        // Share Action Button (Moved below Cronología section as the last action button)
+        OutlinedButton(
+            onClick = onSharePdf,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+            shape = RoundedCornerShape(12.dp),
+            enabled = !isSharingPdf
+        ) {
+            if (isSharingPdf) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+            } else {
+                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Compartir PDF", fontWeight = FontWeight.Bold)
             }
         }
         

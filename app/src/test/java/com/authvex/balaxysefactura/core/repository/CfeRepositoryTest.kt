@@ -122,7 +122,7 @@ class CfeRepositoryTest {
         
         val request = fakeApi.lastSearchRequest
         assertNotNull(request)
-        assertEquals("Query", request?.filtro)
-        assertEquals(2, request?.pagina)
+        assertEquals("Query", request?.query)
+        assertEquals(20, request?.offset)
     }
 }

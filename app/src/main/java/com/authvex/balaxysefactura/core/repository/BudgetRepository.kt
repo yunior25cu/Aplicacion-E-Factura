@@ -17,12 +17,13 @@ class BudgetRepository(private val budgetApi: BudgetApi) {
         idCliente: Long? = null
     ): Result<BudgetListResponse> {
         return try {
+            val offset = (pagina - 1) * registrosPorPagina
             val queryMap = mutableMapOf<String, String>(
-                "pagina" to pagina.toString(),
-                "registrosPorPagina" to registrosPorPagina.toString()
+                "offset" to offset.toString(),
+                "limit" to registrosPorPagina.toString()
             )
             if (!busqueda.isNullOrBlank()) {
-                queryMap["busqueda"] = busqueda.trim()
+                queryMap["query"] = busqueda.trim()
             }
             if (estado != null) {
                 queryMap["estado"] = estado.toString()

@@ -9,6 +9,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -127,10 +128,15 @@ fun HomeScreen(
                     Surface(
                         modifier = Modifier.size(48.dp),
                         shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                        color = Color(0xFF2E7D32).copy(alpha = 0.12f)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Text("!", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = "Conexión DGI Estable",
+                                tint = Color(0xFF2E7D32),
+                                modifier = Modifier.size(24.dp)
+                            )
                         }
                     }
                     Spacer(modifier = Modifier.width(16.dp))
