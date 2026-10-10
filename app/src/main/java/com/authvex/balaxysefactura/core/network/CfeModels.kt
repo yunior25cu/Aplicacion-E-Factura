@@ -1,5 +1,7 @@
 package com.authvex.balaxysefactura.core.network
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -10,7 +12,15 @@ data class CfeSearchRequest(
     @SerialName("limit")
     val limit: Int = 20,
     @SerialName("query")
-    val query: String? = null
+    val query: String? = null,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
+    @SerialName("ordering")
+    val ordering: String? = "Numero",
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
+    @SerialName("sortDirection")
+    val sortDirection: String? = "desc"
 )
 
 @Serializable

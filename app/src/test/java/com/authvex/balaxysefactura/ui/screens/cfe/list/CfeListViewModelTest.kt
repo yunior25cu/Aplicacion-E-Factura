@@ -20,7 +20,7 @@ class CfeListViewModelTest {
     private class FakeCfeRepository(
         private val pageProvider: (query: String?, page: Int) -> Result<CfeSearchResponse>
     ) : CfeRepository(mockApi()) {
-        override suspend fun searchDocuments(query: String?, page: Int): Result<CfeSearchResponse> {
+        override suspend fun searchDocuments(query: String?, page: Int, ordering: String?, sortDirection: String?): Result<CfeSearchResponse> {
             return pageProvider(query, page)
         }
     }

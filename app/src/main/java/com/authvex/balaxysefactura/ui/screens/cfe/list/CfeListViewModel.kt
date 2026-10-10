@@ -29,12 +29,20 @@ sealed class CfeListUiState {
     data class Error(val error: AppError) : CfeListUiState()
 }
 
+enum class NumberSortDirection(val apiValue: String) {
+    DESC("desc"),
+    ASC("asc")
+}
+
 class CfeListViewModel(private val repository: CfeRepository) : ViewModel() {
 
     var uiState by mutableStateOf<CfeListUiState>(CfeListUiState.LoadingInitial)
         private set
 
     var searchQuery by mutableStateOf("")
+        private set
+
+    var numberSortDirection by mutableStateOf(NumberSortDirection.DESC)
         private set
 
     private var currentPage = 1
@@ -45,6 +53,15 @@ class CfeListViewModel(private val repository: CfeRepository) : ViewModel() {
 
     init {
         loadDocuments()
+    }
+
+    fun toggleNumberSort() {
+        numberSortDirection = if (numberSortDirection == NumberSortDirection.DESC) {
+            NumberSortDirection.ASC
+        } else {
+            NumberSortDirection.DESC
+        }
+        loadDocuments(isRefresh = true)
     }
 
     fun loadDocuments(isRefresh: Boolean = false) {
@@ -58,7 +75,9 @@ class CfeListViewModel(private val repository: CfeRepository) : ViewModel() {
             
             repository.searchDocuments(
                 query = searchQuery.ifBlank { null },
-                page = 1
+                page = 1,
+                ordering = "Numero",
+                sortDirection = numberSortDirection.apiValue
             ).onSuccess { response ->
                 totalRecords = response.totalRecords
                 accumulatedDocuments = response.items.toMutableList()
@@ -96,7 +115,9 @@ class CfeListViewModel(private val repository: CfeRepository) : ViewModel() {
         viewModelScope.launch {
             repository.searchDocuments(
                 query = searchQuery.ifBlank { null },
-                page = nextPage
+                page = nextPage,
+                ordering = "Numero",
+                sortDirection = numberSortDirection.apiValue
             ).onSuccess { response ->
                 isFetchingNextPage = false
                 currentPage = nextPage

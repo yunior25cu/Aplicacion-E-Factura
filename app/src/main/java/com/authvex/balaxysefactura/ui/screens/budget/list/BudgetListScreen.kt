@@ -94,27 +94,44 @@ fun BudgetListScreen(
                 shape = RoundedCornerShape(12.dp)
             )
 
-            // Chips de Filtro por Estado
+            // Chips de Filtro por Estado y Orden Numérico
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    FilterChip(
+                        selected = viewModel.selectedEstadoFilter == null,
+                        onClick = { viewModel.onEstadoFilterChanged(null) },
+                        label = { Text("Todos") }
+                    )
+                    FilterChip(
+                        selected = viewModel.selectedEstadoFilter == 1,
+                        onClick = { viewModel.onEstadoFilterChanged(1) },
+                        label = { Text("Sin Confirmar") }
+                    )
+                    FilterChip(
+                        selected = viewModel.selectedEstadoFilter == 2,
+                        onClick = { viewModel.onEstadoFilterChanged(2) },
+                        label = { Text("Confirmados") }
+                    )
+                }
+
                 FilterChip(
-                    selected = viewModel.selectedEstadoFilter == null,
-                    onClick = { viewModel.onEstadoFilterChanged(null) },
-                    label = { Text("Todos") }
-                )
-                FilterChip(
-                    selected = viewModel.selectedEstadoFilter == 1,
-                    onClick = { viewModel.onEstadoFilterChanged(1) },
-                    label = { Text("Sin Confirmar") }
-                )
-                FilterChip(
-                    selected = viewModel.selectedEstadoFilter == 2,
-                    onClick = { viewModel.onEstadoFilterChanged(2) },
-                    label = { Text("Confirmados") }
+                    selected = viewModel.numberSortDirection == com.authvex.balaxysefactura.ui.screens.cfe.list.NumberSortDirection.ASC,
+                    onClick = { viewModel.toggleNumberSort() },
+                    label = {
+                        Text(
+                            text = if (viewModel.numberSortDirection == com.authvex.balaxysefactura.ui.screens.cfe.list.NumberSortDirection.DESC) "N° ↓" else "N° ↑",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 )
             }
 

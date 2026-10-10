@@ -135,6 +135,16 @@ fun CfeListScreen(
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                 )
+                                FilterChip(
+                                    selected = viewModel.numberSortDirection == NumberSortDirection.ASC,
+                                    onClick = { viewModel.toggleNumberSort() },
+                                    label = {
+                                        Text(
+                                            text = if (viewModel.numberSortDirection == NumberSortDirection.DESC) "N° ↓" else "N° ↑",
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                )
                             }
 
                             LazyColumn(

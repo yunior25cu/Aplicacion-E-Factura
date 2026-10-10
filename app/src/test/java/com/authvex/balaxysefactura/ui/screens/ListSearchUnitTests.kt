@@ -95,7 +95,7 @@ class ListSearchUnitTests {
             )
         )
 
-        whenever(cfeRepository.searchDocuments(anyOrNull(), eq(1))).thenReturn(Result.success(cfeListResponse))
+        whenever(cfeRepository.searchDocuments(anyOrNull(), eq(1), anyOrNull(), anyOrNull())).thenReturn(Result.success(cfeListResponse))
 
         val viewModel = CfeListViewModel(cfeRepository)
 
@@ -162,7 +162,7 @@ class ListSearchUnitTests {
             items = listOf(BudgetDto(id = 101L, cliente = ClienteDto(10, "ABITAB S A")))
         )
 
-        whenever(budgetRepository.getBudgets(any(), any(), anyOrNull(), anyOrNull(), anyOrNull()))
+        whenever(budgetRepository.getBudgets(any(), any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull()))
             .thenReturn(Result.success(budgetResponse))
 
         val viewModel = BudgetListViewModel(budgetRepository)

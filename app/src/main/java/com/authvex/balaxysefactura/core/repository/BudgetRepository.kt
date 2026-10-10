@@ -14,7 +14,9 @@ class BudgetRepository(private val budgetApi: BudgetApi) {
         registrosPorPagina: Int = 20,
         busqueda: String? = null,
         estado: Int? = null,
-        idCliente: Long? = null
+        idCliente: Long? = null,
+        ordering: String? = "Documento.Numero",
+        sortDirection: String? = "desc"
     ): Result<BudgetListResponse> {
         return try {
             val offset = (pagina - 1) * registrosPorPagina
@@ -30,6 +32,12 @@ class BudgetRepository(private val budgetApi: BudgetApi) {
             }
             if (idCliente != null) {
                 queryMap["idCliente"] = idCliente.toString()
+            }
+            if (!ordering.isNullOrBlank()) {
+                queryMap["ordering"] = ordering
+            }
+            if (!sortDirection.isNullOrBlank()) {
+                queryMap["sortDirection"] = sortDirection
             }
 
             val response = budgetApi.getBudgets(queryMap)

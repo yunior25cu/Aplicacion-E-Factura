@@ -105,7 +105,7 @@ class BudgetLinkedInvoiceReferenceTest {
             ultimoError = null
         )
 
-        whenever(budgetRepository.getBudgets(any(), any(), anyOrNull(), anyOrNull(), anyOrNull()))
+        whenever(budgetRepository.getBudgets(any(), any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull()))
             .thenReturn(Result.success(BudgetListResponse(items = listOf(budget), totalRecords = 1)))
         whenever(cfeRepository.getDocumentDetail(500)).thenReturn(Result.success(cfeDetail))
 
@@ -157,7 +157,7 @@ class BudgetLinkedInvoiceReferenceTest {
             ultimoError = null
         )
 
-        whenever(budgetRepository.getBudgets(any(), any(), anyOrNull(), anyOrNull(), anyOrNull()))
+        whenever(budgetRepository.getBudgets(any(), any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull()))
             .thenReturn(Result.success(BudgetListResponse(items = listOf(budget), totalRecords = 1)))
         whenever(cfeRepository.getDocumentDetail(500)).thenReturn(Result.success(cfeDetailPending))
 
@@ -194,7 +194,7 @@ class BudgetLinkedInvoiceReferenceTest {
             ultimoError = null
         )
 
-        whenever(budgetRepository.getBudgets(any(), any(), anyOrNull(), anyOrNull(), anyOrNull()))
+        whenever(budgetRepository.getBudgets(any(), any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull()))
             .thenReturn(Result.success(BudgetListResponse(items = listOf(budget), totalRecords = 1)))
         whenever(cfeRepository.getDocumentDetail(1234)).thenReturn(Result.success(cfeDetail))
 
@@ -215,7 +215,7 @@ class BudgetLinkedInvoiceReferenceTest {
         val cfeDetailPending = CfeDetailDto(documentoId = 500, serie = null, numero = null, cfeCode = 111, estadoCfe = 0, estadoReceptor = null, receptor = "A", fechaEmision = null, fechaConfirmacion = null, fechaEnvioUtc = null, fechaAceptadoUtc = null, importeTotal = 100.0, iva = 0.0, monedaCodigo = "UYU", monedaSimbolo = "$", ultimoError = null)
         val cfeDetailResolved = CfeDetailDto(documentoId = 500, serie = "A", numero = 22020L, cfeCode = 111, estadoCfe = 2, estadoReceptor = 1, receptor = "A", fechaEmision = "2026-01-04", fechaConfirmacion = "2026-01-04", fechaEnvioUtc = null, fechaAceptadoUtc = null, importeTotal = 100.0, iva = 0.0, monedaCodigo = "UYU", monedaSimbolo = "$", ultimoError = null)
 
-        whenever(budgetRepository.getBudgets(any(), any(), anyOrNull(), anyOrNull(), anyOrNull()))
+        whenever(budgetRepository.getBudgets(any(), any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull()))
             .thenReturn(Result.success(BudgetListResponse(items = listOf(budget), totalRecords = 1)))
         whenever(cfeRepository.getDocumentDetail(500))
             .thenReturn(Result.success(cfeDetailPending))
@@ -258,7 +258,7 @@ class BudgetLinkedInvoiceReferenceTest {
             ultimoError = null
         )
 
-        whenever(budgetRepository.getBudgets(any(), any(), anyOrNull(), anyOrNull(), anyOrNull()))
+        whenever(budgetRepository.getBudgets(any(), any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull()))
             .thenReturn(Result.success(BudgetListResponse(items = listOf(budget1, budget2), totalRecords = 2)))
         whenever(cfeRepository.getDocumentDetail(500)).thenReturn(Result.success(cfeDetail))
 

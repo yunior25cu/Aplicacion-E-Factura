@@ -4,10 +4,23 @@ import com.authvex.balaxysefactura.core.network.*
 
 open class CfeRepository(private val api: CfeApi) {
 
-    open suspend fun searchDocuments(query: String? = null, page: Int = 1): Result<CfeSearchResponse> {
+    open suspend fun searchDocuments(
+        query: String? = null,
+        page: Int = 1,
+        ordering: String? = "Numero",
+        sortDirection: String? = "desc"
+    ): Result<CfeSearchResponse> {
         return try {
             val offset = (page - 1) * 20
-            val response = api.search(CfeSearchRequest(offset = offset, limit = 20, query = query))
+            val response = api.search(
+                CfeSearchRequest(
+                    offset = offset,
+                    limit = 20,
+                    query = query,
+                    ordering = ordering,
+                    sortDirection = sortDirection
+                )
+            )
             Result.success(response)
         } catch (e: Exception) {
             Result.failure(ErrorMapper.fromThrowable(e))

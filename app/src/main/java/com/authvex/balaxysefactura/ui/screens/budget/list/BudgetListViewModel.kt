@@ -9,6 +9,7 @@ import com.authvex.balaxysefactura.core.network.BudgetDto
 import com.authvex.balaxysefactura.core.network.ErrorMapper
 import com.authvex.balaxysefactura.core.repository.BudgetRepository
 import com.authvex.balaxysefactura.core.repository.CfeRepository
+import com.authvex.balaxysefactura.ui.screens.cfe.list.NumberSortDirection
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -57,6 +58,9 @@ class BudgetListViewModel(
     var cfeReferences by mutableStateOf<Map<Long, BudgetCfeReferenceState>>(emptyMap())
         private set
 
+    var numberSortDirection by mutableStateOf(NumberSortDirection.DESC)
+        private set
+
     private var currentPage = 1
     private val pageSize = 20
     private var allLoadedBudgets = mutableListOf<BudgetDto>()
@@ -90,6 +94,15 @@ class BudgetListViewModel(
         }
     }
 
+    fun toggleNumberSort() {
+        numberSortDirection = if (numberSortDirection == NumberSortDirection.DESC) {
+            NumberSortDirection.ASC
+        } else {
+            NumberSortDirection.DESC
+        }
+        loadInitialBudgets()
+    }
+
     fun loadMore() {
         val currentState = uiState
         if (currentState is BudgetListUiState.Success && currentState.hasMore && !isRefreshing) {
@@ -99,7 +112,9 @@ class BudgetListViewModel(
                     pagina = currentPage,
                     registrosPorPagina = pageSize,
                     busqueda = searchQuery.takeIf { it.isNotBlank() },
-                    estado = selectedEstadoFilter
+                    estado = selectedEstadoFilter,
+                    ordering = "Documento.Numero",
+                    sortDirection = numberSortDirection.apiValue
                 )
                 result.onSuccess { response ->
                     allLoadedBudgets.addAll(response.items)
@@ -137,7 +152,9 @@ class BudgetListViewModel(
             pagina = currentPage,
             registrosPorPagina = pageSize,
             busqueda = searchQuery.takeIf { it.isNotBlank() },
-            estado = selectedEstadoFilter
+            estado = selectedEstadoFilter,
+            ordering = "Documento.Numero",
+            sortDirection = numberSortDirection.apiValue
         )
 
         result.onSuccess { response ->
