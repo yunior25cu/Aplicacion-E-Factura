@@ -29,7 +29,8 @@ fun HomeScreen(
     onViewCfeList: () -> Unit = {},
     onEmitDocument: () -> Unit = {},
     onViewReports: () -> Unit = {},
-    onViewBudgets: () -> Unit = {}
+    onViewBudgets: () -> Unit = {},
+    onViewCollections: () -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -104,6 +105,17 @@ fun HomeScreen(
                     onClick = onViewBudgets
                 )
                 ActionCard(
+                    title = "Cobros",
+                    subtitle = "Pagos recibidos",
+                    icon = Icons.AutoMirrored.Filled.List,
+                    color = Color(0xFF673AB7),
+                    modifier = Modifier.weight(1f),
+                    onClick = onViewCollections
+                )
+            }
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                ActionCard(
                     title = "Informes",
                     subtitle = "Analítica de Ventas",
                     icon = Icons.Default.BarChart,
@@ -111,6 +123,7 @@ fun HomeScreen(
                     modifier = Modifier.weight(1f),
                     onClick = onViewReports
                 )
+                Spacer(modifier = Modifier.weight(1f))
             }
 
             Spacer(modifier = Modifier.height(8.dp))

@@ -18,12 +18,20 @@ import com.authvex.balaxysefactura.core.auth.SessionManager
 import com.authvex.balaxysefactura.core.network.AuthApi
 import com.authvex.balaxysefactura.core.network.BudgetApi
 import com.authvex.balaxysefactura.core.network.CfeApi
+import com.authvex.balaxysefactura.core.network.CollectionApi
 import com.authvex.balaxysefactura.core.network.ReportsApi
 import com.authvex.balaxysefactura.core.network.RetrofitClient
 import com.authvex.balaxysefactura.core.repository.BudgetRepository
 import com.authvex.balaxysefactura.core.repository.CfeRepository
+import com.authvex.balaxysefactura.core.repository.CollectionRepository
 import com.authvex.balaxysefactura.core.repository.ReportsRepository
 import com.authvex.balaxysefactura.ui.navigation.Screen
+import com.authvex.balaxysefactura.ui.screens.collection.detail.CollectionDetailScreen
+import com.authvex.balaxysefactura.ui.screens.collection.detail.CollectionDetailViewModel
+import com.authvex.balaxysefactura.ui.screens.collection.form.CollectionFormScreen
+import com.authvex.balaxysefactura.ui.screens.collection.form.CollectionFormViewModel
+import com.authvex.balaxysefactura.ui.screens.collection.list.CollectionListScreen
+import com.authvex.balaxysefactura.ui.screens.collection.list.CollectionListViewModel
 import com.authvex.balaxysefactura.ui.screens.budget.detail.BudgetDetailScreen
 import com.authvex.balaxysefactura.ui.screens.budget.detail.BudgetDetailViewModel
 import com.authvex.balaxysefactura.ui.screens.budget.form.BudgetFormScreen
@@ -57,10 +65,12 @@ class MainActivity : ComponentActivity() {
         val cfeApi = retrofitClient.create(CfeApi::class.java)
         val reportsApi = retrofitClient.create(ReportsApi::class.java)
         val budgetApi = retrofitClient.create(BudgetApi::class.java)
-        
+        val collectionApi = retrofitClient.create(CollectionApi::class.java)
+
         val cfeRepository = CfeRepository(cfeApi)
         val reportsRepository = ReportsRepository(reportsApi)
         val budgetRepository = BudgetRepository(budgetApi)
+        val collectionRepository = CollectionRepository(collectionApi)
 
         val startDestination = runBlocking {
             if (authPreferences.getAuthTokenSync() != null) Screen.Home.route else Screen.Login.route
@@ -122,6 +132,9 @@ class MainActivity : ComponentActivity() {
                             },
                             onViewBudgets = {
                                 navController.navigate(Screen.Budgets.route)
+                            },
+                            onViewCollections = {
+                                navController.navigate(Screen.Collections.route)
                             }
                         )
                     }
@@ -229,13 +242,74 @@ class MainActivity : ComponentActivity() {
                         val factory = object : ViewModelProvider.Factory {
                             @Suppress("UNCHECKED_CAST")
                             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                return CfeDetailViewModel(cfeRepository, documentoId) as T
+                                return CfeDetailViewModel(cfeRepository, documentoId, collectionRepository) as T
                             }
                         }
                         val detailViewModel: CfeDetailViewModel = viewModel(factory = factory)
                         CfeDetailScreen(
                             viewModel = detailViewModel,
-                            onBack = { navController.popBackStack() }
+                            onBack = { navController.popBackStack() },
+                            onCollectInvoice = { facturaId ->
+                                navController.navigate(Screen.CollectionForm.createRoute(facturaIdInitial = facturaId))
+                            }
+                        )
+                    }
+                    composable(Screen.Collections.route) {
+                        val factory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return CollectionListViewModel(collectionRepository) as T
+                            }
+                        }
+                        val listViewModel: CollectionListViewModel = viewModel(factory = factory)
+                        CollectionListScreen(
+                            viewModel = listViewModel,
+                            onNavigateBack = { navController.popBackStack() },
+                            onNavigateToDetail = { id ->
+                                navController.navigate(Screen.CollectionDetail.createRoute(id))
+                            },
+                            onNavigateToCreate = {
+                                navController.navigate(Screen.CollectionForm.createRoute())
+                            }
+                        )
+                    }
+                    composable(
+                        route = Screen.CollectionDetail.route,
+                        arguments = listOf(navArgument("collectionId") { type = NavType.LongType })
+                    ) { backStackEntry ->
+                        val collectionId = backStackEntry.arguments?.getLong("collectionId") ?: 0L
+                        val factory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return CollectionDetailViewModel(collectionRepository, collectionId) as T
+                            }
+                        }
+                        val detailViewModel: CollectionDetailViewModel = viewModel(factory = factory)
+                        CollectionDetailScreen(
+                            viewModel = detailViewModel,
+                            onNavigateBack = { navController.popBackStack() }
+                        )
+                    }
+                    composable(
+                        route = Screen.CollectionForm.route,
+                        arguments = listOf(navArgument("facturaIdInitial") { type = NavType.LongType; defaultValue = 0L })
+                    ) { backStackEntry ->
+                        val initFacturaId = backStackEntry.arguments?.getLong("facturaIdInitial")?.takeIf { it > 0 }
+                        val factory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return CollectionFormViewModel(collectionRepository, cfeRepository, initFacturaId) as T
+                            }
+                        }
+                        val formViewModel: CollectionFormViewModel = viewModel(factory = factory)
+                        CollectionFormScreen(
+                            viewModel = formViewModel,
+                            onNavigateBack = { navController.popBackStack() },
+                            onCollectionSaved = { createdId ->
+                                navController.navigate(Screen.CollectionDetail.createRoute(createdId)) {
+                                    popUpTo(Screen.Collections.route)
+                                }
+                            }
                         )
                     }
                     composable(Screen.Emission.route) {

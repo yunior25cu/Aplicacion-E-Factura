@@ -8,7 +8,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.authvex.balaxysefactura.core.network.AppError
 import com.authvex.balaxysefactura.core.network.CfeDetailDto
+import com.authvex.balaxysefactura.core.network.CollectionInvoiceDto
 import com.authvex.balaxysefactura.core.repository.CfeRepository
+import com.authvex.balaxysefactura.core.repository.CollectionRepository
 import com.authvex.balaxysefactura.ui.screens.common.PdfShareHelper
 import kotlinx.coroutines.launch
 
@@ -20,7 +22,8 @@ sealed class CfeDetailUiState {
 
 class CfeDetailViewModel(
     private val repository: CfeRepository,
-    private val documentoId: Long
+    private val documentoId: Long,
+    private val collectionRepository: CollectionRepository? = null
 ) : ViewModel() {
 
     var uiState by mutableStateOf<CfeDetailUiState>(CfeDetailUiState.Loading)
@@ -32,6 +35,12 @@ class CfeDetailViewModel(
     var shareError by mutableStateOf<String?>(null)
 
     var formattedTotalText by mutableStateOf<String?>(null)
+        private set
+
+    var linkedFactura by mutableStateOf<CollectionInvoiceDto?>(null)
+        private set
+
+    var baseCurrencyId by mutableStateOf<Int?>(null)
         private set
 
     init {
@@ -54,31 +63,41 @@ class CfeDetailViewModel(
 
             // Fetch base currency id from Empresa
             val empresaRes = repository.getEmpresa().getOrNull()
-            val baseCurrencyId = empresaRes?.moneda?.id ?: 50
+            val baseId = empresaRes?.moneda?.id ?: 50
+            baseCurrencyId = baseId
 
-            // Fetch ERP document (Factura or Devolucion)
-            val erpDocRes = if (isDevolucionCode(doc.cfeCode)) {
-                repository.getDevolucionById(documentoId)
-            } else {
-                repository.getFacturaById(documentoId)
-            }
-
-            val erpDoc = erpDocRes.getOrNull()
-            if (erpDocRes.isSuccess && erpDoc != null) {
-                val isBaseCurrency = (erpDoc.moneda?.id == baseCurrencyId)
-                if (isBaseCurrency) {
-                    val amount = erpDoc.importeTotalBase ?: doc.importeTotal ?: 0.0
-                    val symbol = doc.monedaSimbolo ?: "$"
+            if (!isDevolucionCode(doc.cfeCode) && collectionRepository != null) {
+                collectionRepository.getInvoiceById(documentoId).onSuccess { invoice ->
+                    linkedFactura = invoice
+                    val isBaseCurrency = (invoice.moneda?.id == baseId)
+                    val amount = if (isBaseCurrency) (invoice.importeTotalBase ?: doc.importeTotal ?: 0.0) else (invoice.importeTotalOriginal ?: 0.0)
+                    val symbol = if (isBaseCurrency) (doc.monedaSimbolo ?: "$") else (invoice.moneda?.codigo ?: doc.monedaCodigo ?: "USD")
                     formattedTotalText = "$symbol ${String.format(java.util.Locale.US, "%.2f", amount)}"
-                } else {
-                    val amount = erpDoc.importeTotalOriginal ?: 0.0
-                    val code = erpDoc.moneda?.codigo ?: doc.monedaCodigo ?: "USD"
-                    formattedTotalText = "$code ${String.format(java.util.Locale.US, "%.2f", amount)}"
                 }
             } else {
-                val amount = doc.importeTotal ?: 0.0
-                val symbol = doc.monedaSimbolo ?: "$"
-                formattedTotalText = "$symbol ${String.format(java.util.Locale.US, "%.2f", amount)}"
+                val erpDocRes = if (isDevolucionCode(doc.cfeCode)) {
+                    repository.getDevolucionById(documentoId)
+                } else {
+                    repository.getFacturaById(documentoId)
+                }
+
+                val erpDoc = erpDocRes.getOrNull()
+                if (erpDocRes.isSuccess && erpDoc != null) {
+                    val isBaseCurrency = (erpDoc.moneda?.id == baseId)
+                    if (isBaseCurrency) {
+                        val amount = erpDoc.importeTotalBase ?: doc.importeTotal ?: 0.0
+                        val symbol = doc.monedaSimbolo ?: "$"
+                        formattedTotalText = "$symbol ${String.format(java.util.Locale.US, "%.2f", amount)}"
+                    } else {
+                        val amount = erpDoc.importeTotalOriginal ?: 0.0
+                        val code = erpDoc.moneda?.codigo ?: doc.monedaCodigo ?: "USD"
+                        formattedTotalText = "$code ${String.format(java.util.Locale.US, "%.2f", amount)}"
+                    }
+                } else {
+                    val amount = doc.importeTotal ?: 0.0
+                    val symbol = doc.monedaSimbolo ?: "$"
+                    formattedTotalText = "$symbol ${String.format(java.util.Locale.US, "%.2f", amount)}"
+                }
             }
 
             uiState = CfeDetailUiState.Success(doc)

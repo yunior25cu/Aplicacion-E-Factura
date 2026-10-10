@@ -18,4 +18,11 @@ sealed class Screen(val route: String) {
     object BudgetEdit : Screen("budget_edit/{budgetId}") {
         fun createRoute(budgetId: Long) = "budget_edit/$budgetId"
     }
+    object Collections : Screen("collections")
+    object CollectionDetail : Screen("collection_detail/{collectionId}") {
+        fun createRoute(collectionId: Long) = "collection_detail/$collectionId"
+    }
+    object CollectionForm : Screen("collection_form?facturaIdInitial={facturaIdInitial}") {
+        fun createRoute(facturaIdInitial: Long? = null) = if (facturaIdInitial != null) "collection_form?facturaIdInitial=$facturaIdInitial" else "collection_form"
+    }
 }

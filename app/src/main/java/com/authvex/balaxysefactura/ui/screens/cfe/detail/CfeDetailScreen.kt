@@ -27,7 +27,8 @@ import com.authvex.balaxysefactura.ui.screens.cfe.list.StatusChip
 @Composable
 fun CfeDetailScreen(
     viewModel: CfeDetailViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onCollectInvoice: (Long) -> Unit = {}
 ) {
     val context = LocalContext.current
     val uiState = viewModel.uiState
@@ -93,9 +94,11 @@ fun CfeDetailScreen(
                 is CfeDetailUiState.Success -> {
                     CfeDetailContent(
                         doc = uiState.document,
+                        viewModel = viewModel,
                         formattedTotalText = viewModel.formattedTotalText,
                         isSharingPdf = viewModel.isSharingPdf,
-                        onSharePdf = { viewModel.shareCfePdf(context) }
+                        onSharePdf = { viewModel.shareCfePdf(context) },
+                        onCollectInvoice = onCollectInvoice
                     )
                 }
             }
@@ -106,9 +109,11 @@ fun CfeDetailScreen(
 @Composable
 fun CfeDetailContent(
     doc: CfeDetailDto,
+    viewModel: CfeDetailViewModel? = null,
     formattedTotalText: String? = null,
     isSharingPdf: Boolean = false,
-    onSharePdf: () -> Unit = {}
+    onSharePdf: () -> Unit = {},
+    onCollectInvoice: (Long) -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -157,6 +162,88 @@ fun CfeDetailContent(
             DetailItemRow(label = "Emisión", value = doc.fechaEmision?.take(16))
             DetailItemRow(label = "Confirmación", value = doc.fechaConfirmacion?.take(16))
             DetailItemRow(label = "Aceptado (UTC)", value = doc.fechaAceptadoUtc?.take(16))
+        }
+
+        val isCfeInvoiceCode = doc.cfeCode == 101 || doc.cfeCode == 111
+        val linkedFactura = viewModel?.linkedFactura
+
+        if (isCfeInvoiceCode && linkedFactura != null) {
+            val baseTotal = linkedFactura.importeTotalBase ?: 0.0
+            val baseDevoluciones = (linkedFactura.devueltaCantidadBase ?: 0.0) + (linkedFactura.devueltaPrecioBase ?: 0.0)
+            val baseNotasDebito = linkedFactura.notasDebitoBase ?: 0.0
+            val netTotalBase = kotlin.math.max(baseTotal - baseDevoluciones + baseNotasDebito, 0.0)
+
+            val collectedBase = (linkedFactura.importeTotalBaseCobrado ?: 0.0) + (linkedFactura.importeTotalBaseAjustado ?: 0.0)
+            val pendingBase = kotlin.math.max(netTotalBase - collectedBase, 0.0)
+
+            val origTotal = linkedFactura.importeTotalOriginal ?: 0.0
+            val origDevoluciones = (linkedFactura.devueltaCantidadOriginal ?: 0.0) + (linkedFactura.devueltaPrecioOriginal ?: 0.0)
+            val origNotasDebito = linkedFactura.notasDebitoOriginal ?: 0.0
+            val netTotalOrig = kotlin.math.max(origTotal - origDevoluciones + origNotasDebito, 0.0)
+
+            val collectedOrig = (linkedFactura.importeTotalOriginalCobrado ?: 0.0) + (linkedFactura.importeTotalOriginalAjustado ?: 0.0)
+            val pendingOrig = kotlin.math.max(netTotalOrig - collectedOrig, 0.0)
+
+            val symbol = linkedFactura.moneda?.codigo ?: doc.monedaCodigo ?: "UYU"
+            val isBaseCurrency = (linkedFactura.moneda?.id == viewModel?.baseCurrencyId)
+
+            val totalDisplay = if (isBaseCurrency) baseTotal else origTotal
+            val collectedDisplay = if (isBaseCurrency) collectedBase else collectedOrig
+            val pendingDisplay = if (isBaseCurrency) pendingBase else pendingOrig
+
+            val (cobroStatusColor, cobroStatusText) = when {
+                pendingDisplay <= 0.00001 -> Color(0xFF2E7D32) to "Cobrado"
+                collectedDisplay > 0.0 -> Color(0xFF0288D1) to "Parcialmente cobrado"
+                else -> Color(0xFFE65100) to "Pendiente"
+            }
+
+            val canCollect = pendingDisplay > 0.00001 && linkedFactura.estado == 2 && doc.estadoCfe != 6 && doc.estadoCfe != 8
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Cobranza", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Surface(
+                            color = cobroStatusColor.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = cobroStatusText,
+                                color = cobroStatusColor,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                    HorizontalDivider()
+                    DetailItemRow(label = "Total:", value = "$symbol ${String.format(java.util.Locale.US, "%.2f", totalDisplay)}")
+                    DetailItemRow(label = "Cobrado:", value = "$symbol ${String.format(java.util.Locale.US, "%.2f", collectedDisplay)}")
+                    DetailItemRow(label = "Pendiente:", value = "$symbol ${String.format(java.util.Locale.US, "%.2f", pendingDisplay)}")
+
+                    if (canCollect) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Button(
+                            onClick = { onCollectInvoice(linkedFactura.id) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Cobrar", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
         }
 
         if (!doc.ultimoError.isNullOrBlank()) {
