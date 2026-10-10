@@ -8,9 +8,24 @@ import androidx.lifecycle.viewModelScope
 import com.authvex.balaxysefactura.core.network.BudgetDto
 import com.authvex.balaxysefactura.core.network.ErrorMapper
 import com.authvex.balaxysefactura.core.repository.BudgetRepository
+import com.authvex.balaxysefactura.core.repository.CfeRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+sealed interface BudgetCfeReferenceState {
+    object Loading : BudgetCfeReferenceState
+    data class Resolved(val serie: String, val numero: Long) : BudgetCfeReferenceState
+    object Pending : BudgetCfeReferenceState
+    object Failed : BudgetCfeReferenceState
+
+    fun getDisplayLabel(): String = when (this) {
+        is Loading -> "Factura vinculada"
+        is Resolved -> "Factura CFE $serie-$numero"
+        is Pending -> "Factura CFE pendiente"
+        is Failed -> "CFE no disponible"
+    }
+}
 
 sealed class BudgetListUiState {
     object Loading : BudgetListUiState()
@@ -23,7 +38,8 @@ sealed class BudgetListUiState {
 }
 
 class BudgetListViewModel(
-    private val budgetRepository: BudgetRepository
+    private val budgetRepository: BudgetRepository,
+    private val cfeRepository: CfeRepository? = null
 ) : ViewModel() {
 
     var uiState by mutableStateOf<BudgetListUiState>(BudgetListUiState.Loading)
@@ -36,6 +52,9 @@ class BudgetListViewModel(
         private set
 
     var isRefreshing by mutableStateOf(false)
+        private set
+
+    var cfeReferences by mutableStateOf<Map<Long, BudgetCfeReferenceState>>(emptyMap())
         private set
 
     private var currentPage = 1
@@ -65,6 +84,7 @@ class BudgetListViewModel(
     fun refresh() {
         viewModelScope.launch {
             isRefreshing = true
+            invalidatePendingOrFailedReferences()
             loadInitialBudgetsInternal()
             isRefreshing = false
         }
@@ -83,6 +103,7 @@ class BudgetListViewModel(
                 )
                 result.onSuccess { response ->
                     allLoadedBudgets.addAll(response.items)
+                    resolveCfeReferences(response.items)
                     val hasMore = allLoadedBudgets.size < response.totalRecords
                     uiState = BudgetListUiState.Success(
                         budgets = allLoadedBudgets.toList(),
@@ -98,8 +119,13 @@ class BudgetListViewModel(
 
     private fun loadInitialBudgets() {
         viewModelScope.launch {
+            invalidatePendingOrFailedReferences()
             loadInitialBudgetsInternal()
         }
+    }
+
+    private fun invalidatePendingOrFailedReferences() {
+        cfeReferences = cfeReferences.filterValues { it is BudgetCfeReferenceState.Resolved }
     }
 
     private suspend fun loadInitialBudgetsInternal() {
@@ -116,6 +142,7 @@ class BudgetListViewModel(
 
         result.onSuccess { response ->
             allLoadedBudgets.addAll(response.items)
+            resolveCfeReferences(response.items)
             val hasMore = allLoadedBudgets.size < response.totalRecords
             uiState = BudgetListUiState.Success(
                 budgets = allLoadedBudgets.toList(),
@@ -125,6 +152,33 @@ class BudgetListViewModel(
         }.onFailure { throwable ->
             val appError = ErrorMapper.fromThrowable(throwable)
             uiState = BudgetListUiState.Error(appError.getDisplayMessage())
+        }
+    }
+
+    private fun resolveCfeReferences(budgets: List<BudgetDto>) {
+        val repo = cfeRepository ?: return
+        budgets.mapNotNull { it.factura }.distinctBy { it.id }.forEach { factura ->
+            val facturaId = factura.id
+            val currentState = cfeReferences[facturaId]
+            if (currentState == null || currentState is BudgetCfeReferenceState.Failed || currentState is BudgetCfeReferenceState.Pending) {
+                // Set loading state in map
+                if (currentState == null) {
+                    cfeReferences = cfeReferences + (facturaId to BudgetCfeReferenceState.Loading)
+                }
+
+                viewModelScope.launch {
+                    repo.getDocumentDetail(facturaId.toInt()).onSuccess { detail ->
+                        val newState = if (!detail.serie.isNullOrBlank() && detail.numero != null && detail.numero > 0) {
+                            BudgetCfeReferenceState.Resolved(detail.serie, detail.numero)
+                        } else {
+                            BudgetCfeReferenceState.Pending
+                        }
+                        cfeReferences = cfeReferences + (facturaId to newState)
+                    }.onFailure {
+                        cfeReferences = cfeReferences + (facturaId to BudgetCfeReferenceState.Failed)
+                    }
+                }
+            }
         }
     }
 }

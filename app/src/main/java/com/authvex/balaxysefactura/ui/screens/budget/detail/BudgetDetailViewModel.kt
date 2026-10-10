@@ -55,15 +55,18 @@ class BudgetDetailViewModel(
     var isOptionsLoading by mutableStateOf(false)
         private set
 
+    private fun getTodayDate(): String = dateFormat.format(Date())
+
     var selectedPuntoVentaId by mutableStateOf<Long?>(null)
     var dialogFechaEmision by mutableStateOf(getTodayDate())
     var dialogFechaConfirmacion by mutableStateOf(getTodayDate())
 
+    var cfeReferenceLabel by mutableStateOf<String?>(null)
+        private set
+
     init {
         loadDetail()
     }
-
-    private fun getTodayDate(): String = dateFormat.format(Date())
 
     fun loadDetail() {
         viewModelScope.launch {
@@ -71,10 +74,27 @@ class BudgetDetailViewModel(
             val result = budgetRepository.getBudgetById(budgetId)
             result.onSuccess { budget ->
                 uiState = BudgetDetailUiState.Success(budget)
+                if (budget.factura != null) {
+                    resolveLinkedCfe(budget.factura.id)
+                }
             }.onFailure { throwable ->
                 val appError = ErrorMapper.fromThrowable(throwable)
                 uiState = BudgetDetailUiState.Error(appError.getDisplayMessage())
             }
+        }
+    }
+
+    private suspend fun resolveLinkedCfe(facturaId: Long) {
+        val repo = cfeRepository ?: return
+        repo.getDocumentDetail(facturaId.toInt()).onSuccess { detail ->
+            val label = if (!detail.serie.isNullOrBlank() && detail.numero != null && detail.numero > 0) {
+                "CFE: ${detail.serie}-${detail.numero}"
+            } else {
+                "Factura CFE pendiente"
+            }
+            cfeReferenceLabel = label
+        }.onFailure {
+            cfeReferenceLabel = "Factura vinculada"
         }
     }
 

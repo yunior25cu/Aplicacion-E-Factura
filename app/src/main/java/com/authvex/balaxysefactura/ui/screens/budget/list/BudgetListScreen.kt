@@ -173,6 +173,7 @@ fun BudgetListScreen(
                             ) { _, budget ->
                                 BudgetCardItem(
                                     budget = budget,
+                                    cfeReferences = viewModel.cfeReferences,
                                     onClick = { onNavigateToDetail(budget.id) }
                                 )
                             }
@@ -200,6 +201,7 @@ fun BudgetListScreen(
 @Composable
 fun BudgetCardItem(
     budget: BudgetDto,
+    cfeReferences: Map<Long, BudgetCfeReferenceState> = emptyMap(),
     onClick: () -> Unit
 ) {
     val estadoEnum = BudgetEstado.fromCode(budget.estado)
@@ -293,8 +295,10 @@ fun BudgetCardItem(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
+                        val refState = cfeReferences[budget.factura.id] ?: BudgetCfeReferenceState.Loading
+                        val cfeLabel = refState.getDisplayLabel()
                         Text(
-                            text = "Factura N° ${budget.factura.folio ?: budget.factura.id}",
+                            text = cfeLabel,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             fontWeight = FontWeight.Medium

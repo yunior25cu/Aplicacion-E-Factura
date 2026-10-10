@@ -129,7 +129,7 @@ class MainActivity : ComponentActivity() {
                         val factory = object : ViewModelProvider.Factory {
                             @Suppress("UNCHECKED_CAST")
                             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                return BudgetListViewModel(budgetRepository) as T
+                                return BudgetListViewModel(budgetRepository, cfeRepository) as T
                             }
                         }
                         val listViewModel: BudgetListViewModel = viewModel(factory = factory)

@@ -304,7 +304,7 @@ fun BudgetDetailScreen(
                                     Spacer(modifier = Modifier.width(16.dp))
                                     Column {
                                         Text("Factura Vinculada", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color(0xFF0288D1))
-                                        Text("Folio: ${budget.factura.folio ?: budget.factura.id}", style = MaterialTheme.typography.bodySmall, color = Color(0xFF01579B))
+                                        Text(viewModel.cfeReferenceLabel ?: "Factura CFE pendiente", style = MaterialTheme.typography.bodySmall, color = Color(0xFF01579B))
                                     }
                                 }
                             }
