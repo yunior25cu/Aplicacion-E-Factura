@@ -25,4 +25,7 @@ sealed class Screen(val route: String) {
     object CollectionForm : Screen("collection_form?facturaIdInitial={facturaIdInitial}") {
         fun createRoute(facturaIdInitial: Long? = null) = if (facturaIdInitial != null) "collection_form?facturaIdInitial=$facturaIdInitial" else "collection_form"
     }
+    object ReceivablesReport : Screen("reports_receivables")
+    object AgingReport : Screen("reports_aging")
+    object CollectedReport : Screen("reports_collected")
 }

@@ -38,8 +38,12 @@ import java.util.*
 @Composable
 fun ReportsScreen(
     viewModel: ReportsViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNavigateToReceivablesReport: () -> Unit = {},
+    onNavigateToAgingReport: () -> Unit = {},
+    onNavigateToCollectedReport: () -> Unit = {}
 ) {
+    var categoryTab by remember { mutableIntStateOf(0) }
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf("Resumen", "Serie", "Clientes", "Productos", "Docs")
     var showDatePicker by remember { mutableStateOf(false) }
@@ -47,18 +51,20 @@ fun ReportsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Informes de Ventas", style = MaterialTheme.typography.titleLarge) },
+                title = { Text(if (categoryTab == 0) "Informes de Ventas" else "Informes de Cobros", style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showDatePicker = true }) {
-                        Icon(Icons.Default.CalendarMonth, contentDescription = "Filtrar Fechas")
-                    }
-                    IconButton(onClick = { viewModel.loadAll() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refrescar")
+                    if (categoryTab == 0) {
+                        IconButton(onClick = { showDatePicker = true }) {
+                            Icon(Icons.Default.CalendarMonth, contentDescription = "Filtrar Fechas")
+                        }
+                        IconButton(onClick = { viewModel.loadAll() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refrescar")
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -70,52 +76,80 @@ fun ReportsScreen(
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
             
-            DateRangeHeader(viewModel.fechaDesde, viewModel.fechaHasta) {
-                showDatePicker = true
+            TabRow(
+                selectedTabIndex = categoryTab,
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.primary
+            ) {
+                Tab(
+                    selected = categoryTab == 0,
+                    onClick = { categoryTab = 0 },
+                    text = { Text("Ventas", fontWeight = FontWeight.Bold) }
+                )
+                Tab(
+                    selected = categoryTab == 1,
+                    onClick = { categoryTab = 1 },
+                    text = { Text("Cobros", fontWeight = FontWeight.Bold) }
+                )
             }
 
-            DatePresetsRow(onPresetSelected = { viewModel.applyPreset(it) })
+            if (categoryTab == 0) {
+                DateRangeHeader(viewModel.fechaDesde, viewModel.fechaHasta) {
+                    showDatePicker = true
+                }
 
-            ScrollableTabRow(
-                selectedTabIndex = selectedTab,
-                edgePadding = 16.dp,
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary,
-                indicator = { tabPositions ->
-                    if (selectedTab < tabPositions.size) {
-                        TabRowDefaults.SecondaryIndicator(
-                            Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                            color = MaterialTheme.colorScheme.primary
+                DatePresetsRow(onPresetSelected = { viewModel.applyPreset(it) })
+
+                ScrollableTabRow(
+                    selectedTabIndex = selectedTab,
+                    edgePadding = 16.dp,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    indicator = { tabPositions ->
+                        if (selectedTab < tabPositions.size) {
+                            TabRowDefaults.SecondaryIndicator(
+                                Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    },
+                    divider = {}
+                ) {
+                    tabs.forEachIndexed { index, title ->
+                        Tab(
+                            selected = selectedTab == index,
+                            onClick = { selectedTab = index },
+                            text = { Text(title, style = MaterialTheme.typography.labelLarge) }
                         )
                     }
-                },
-                divider = {}
-            ) {
-                tabs.forEachIndexed { index, title ->
-                    Tab(
-                        selected = selectedTab == index,
-                        onClick = { selectedTab = index },
-                        text = { Text(title, style = MaterialTheme.typography.labelLarge) }
-                    )
                 }
-            }
 
-            Box(modifier = Modifier.weight(1f)) {
-                when (selectedTab) {
-                    0 -> ResumenSection(viewModel.resumenState)
-                    1 -> SerieSection(viewModel.serieState, viewModel.serieViewMode) { viewModel.serieViewMode = it }
-                    2 -> TopListSection("Top Clientes", viewModel.clientesState, viewModel.clientesViewMode, { viewModel.clientesViewMode = it }) { item ->
-                        val it = item as VentaClienteItemDto
-                        ReportItemRow(it.denominacion, it.importeTotalBase, it.cantidadDocumentos.toDouble(), "docs")
+                Box(modifier = Modifier.weight(1f)) {
+                    when (selectedTab) {
+                        0 -> ResumenSection(viewModel.resumenState)
+                        1 -> SerieSection(viewModel.serieState, viewModel.serieViewMode) { viewModel.serieViewMode = it }
+                        2 -> TopListSection("Top Clientes", viewModel.clientesState, viewModel.clientesViewMode, { viewModel.clientesViewMode = it }) { item ->
+                            val it = item as VentaClienteItemDto
+                            ReportItemRow(it.denominacion, it.importeTotalBase, it.cantidadDocumentos.toDouble(), "docs")
+                        }
+                        3 -> TopListSection("Top Productos", viewModel.productosState, viewModel.productosViewMode, { viewModel.productosViewMode = it }) { item ->
+                            val it = item as VentaProductoItemDto
+                            ReportItemRow(it.denominacion, it.importeTotalBase, it.cantidad, it.unidadMedidaCodigo ?: "un")
+                        }
+                        4 -> TopListSection("Por Documento", viewModel.documentosState, viewModel.documentosViewMode, { viewModel.documentosViewMode = it }) { item ->
+                            val it = item as VentaDocumentoItemDto
+                            ReportItemRow(it.etiqueta, it.importeTotalBase, it.cantidadDocumentos.toDouble(), "docs")
+                        }
                     }
-                    3 -> TopListSection("Top Productos", viewModel.productosState, viewModel.productosViewMode, { viewModel.productosViewMode = it }) { item ->
-                        val it = item as VentaProductoItemDto
-                        ReportItemRow(it.denominacion, it.importeTotalBase, it.cantidad, it.unidadMedidaCodigo ?: "un")
-                    }
-                    4 -> TopListSection("Por Documento", viewModel.documentosState, viewModel.documentosViewMode, { viewModel.documentosViewMode = it }) { item ->
-                        val it = item as VentaDocumentoItemDto
-                        ReportItemRow(it.etiqueta, it.importeTotalBase, it.cantidadDocumentos.toDouble(), "docs")
-                    }
+                }
+            } else {
+                Box(modifier = Modifier.weight(1f)) {
+                    com.authvex.balaxysefactura.ui.screens.reports.collections.CollectionReportsScreen(
+                        onNavigateBack = { categoryTab = 0 },
+                        onNavigateToReceivables = onNavigateToReceivablesReport,
+                        onNavigateToAging = onNavigateToAgingReport,
+                        onNavigateToCollected = onNavigateToCollectedReport
+                    )
                 }
             }
         }

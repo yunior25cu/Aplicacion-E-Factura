@@ -19,10 +19,12 @@ import com.authvex.balaxysefactura.core.network.AuthApi
 import com.authvex.balaxysefactura.core.network.BudgetApi
 import com.authvex.balaxysefactura.core.network.CfeApi
 import com.authvex.balaxysefactura.core.network.CollectionApi
+import com.authvex.balaxysefactura.core.network.CollectionReportApi
 import com.authvex.balaxysefactura.core.network.ReportsApi
 import com.authvex.balaxysefactura.core.network.RetrofitClient
 import com.authvex.balaxysefactura.core.repository.BudgetRepository
 import com.authvex.balaxysefactura.core.repository.CfeRepository
+import com.authvex.balaxysefactura.core.repository.CollectionReportRepository
 import com.authvex.balaxysefactura.core.repository.CollectionRepository
 import com.authvex.balaxysefactura.core.repository.ReportsRepository
 import com.authvex.balaxysefactura.ui.navigation.Screen
@@ -32,6 +34,12 @@ import com.authvex.balaxysefactura.ui.screens.collection.form.CollectionFormScre
 import com.authvex.balaxysefactura.ui.screens.collection.form.CollectionFormViewModel
 import com.authvex.balaxysefactura.ui.screens.collection.list.CollectionListScreen
 import com.authvex.balaxysefactura.ui.screens.collection.list.CollectionListViewModel
+import com.authvex.balaxysefactura.ui.screens.reports.collections.receivables.ReceivablesReportScreen
+import com.authvex.balaxysefactura.ui.screens.reports.collections.receivables.ReceivablesReportViewModel
+import com.authvex.balaxysefactura.ui.screens.reports.collections.aging.AgingReportScreen
+import com.authvex.balaxysefactura.ui.screens.reports.collections.aging.AgingReportViewModel
+import com.authvex.balaxysefactura.ui.screens.reports.collections.collected.CollectedReportScreen
+import com.authvex.balaxysefactura.ui.screens.reports.collections.collected.CollectedReportViewModel
 import com.authvex.balaxysefactura.ui.screens.budget.detail.BudgetDetailScreen
 import com.authvex.balaxysefactura.ui.screens.budget.detail.BudgetDetailViewModel
 import com.authvex.balaxysefactura.ui.screens.budget.form.BudgetFormScreen
@@ -66,11 +74,13 @@ class MainActivity : ComponentActivity() {
         val reportsApi = retrofitClient.create(ReportsApi::class.java)
         val budgetApi = retrofitClient.create(BudgetApi::class.java)
         val collectionApi = retrofitClient.create(CollectionApi::class.java)
+        val collectionReportApi = retrofitClient.create(CollectionReportApi::class.java)
 
         val cfeRepository = CfeRepository(cfeApi)
         val reportsRepository = ReportsRepository(reportsApi)
         val budgetRepository = BudgetRepository(budgetApi)
         val collectionRepository = CollectionRepository(collectionApi)
+        val collectionReportRepository = CollectionReportRepository(collectionReportApi, collectionApi)
 
         val startDestination = runBlocking {
             if (authPreferences.getAuthTokenSync() != null) Screen.Home.route else Screen.Login.route
@@ -340,7 +350,52 @@ class MainActivity : ComponentActivity() {
                         val reportsViewModel: ReportsViewModel = viewModel(factory = factory)
                         ReportsScreen(
                             viewModel = reportsViewModel,
-                            onBack = { navController.popBackStack() }
+                            onBack = { navController.popBackStack() },
+                            onNavigateToReceivablesReport = { navController.navigate(Screen.ReceivablesReport.route) },
+                            onNavigateToAgingReport = { navController.navigate(Screen.AgingReport.route) },
+                            onNavigateToCollectedReport = { navController.navigate(Screen.CollectedReport.route) }
+                        )
+                    }
+                    composable(Screen.ReceivablesReport.route) {
+                        val factory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return ReceivablesReportViewModel(collectionReportRepository, cfeRepository) as T
+                            }
+                        }
+                        val recViewModel: ReceivablesReportViewModel = viewModel(factory = factory)
+                        ReceivablesReportScreen(
+                            viewModel = recViewModel,
+                            onNavigateBack = { navController.popBackStack() }
+                        )
+                    }
+                    composable(Screen.AgingReport.route) {
+                        val factory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return AgingReportViewModel(collectionReportRepository, cfeRepository) as T
+                            }
+                        }
+                        val agingViewModel: AgingReportViewModel = viewModel(factory = factory)
+                        AgingReportScreen(
+                            viewModel = agingViewModel,
+                            onNavigateBack = { navController.popBackStack() }
+                        )
+                    }
+                    composable(Screen.CollectedReport.route) {
+                        val factory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return CollectedReportViewModel(collectionReportRepository, cfeRepository) as T
+                            }
+                        }
+                        val colViewModel: CollectedReportViewModel = viewModel(factory = factory)
+                        CollectedReportScreen(
+                            viewModel = colViewModel,
+                            onNavigateBack = { navController.popBackStack() },
+                            onNavigateToCollectionDetail = { id ->
+                                navController.navigate(Screen.CollectionDetail.createRoute(id))
+                            }
                         )
                     }
                     if (BuildConfig.DEBUG) {
