@@ -67,11 +67,17 @@ class CfeDetailViewModel(
             baseCurrencyId = baseId
 
             if (!isDevolucionCode(doc.cfeCode) && collectionRepository != null) {
-                collectionRepository.getInvoiceById(documentoId).onSuccess { invoice ->
+                val invRes = collectionRepository.getInvoiceById(documentoId)
+                if (invRes.isSuccess && invRes.getOrNull() != null) {
+                    val invoice = invRes.getOrNull()!!
                     linkedFactura = invoice
                     val isBaseCurrency = (invoice.moneda?.id == baseId)
                     val amount = if (isBaseCurrency) (invoice.importeTotalBase ?: doc.importeTotal ?: 0.0) else (invoice.importeTotalOriginal ?: 0.0)
                     val symbol = if (isBaseCurrency) (doc.monedaSimbolo ?: "$") else (invoice.moneda?.codigo ?: doc.monedaCodigo ?: "USD")
+                    formattedTotalText = "$symbol ${String.format(java.util.Locale.US, "%.2f", amount)}"
+                } else {
+                    val amount = doc.importeTotal ?: 0.0
+                    val symbol = doc.monedaSimbolo ?: "$"
                     formattedTotalText = "$symbol ${String.format(java.util.Locale.US, "%.2f", amount)}"
                 }
             } else {

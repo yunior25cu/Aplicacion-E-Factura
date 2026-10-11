@@ -122,50 +122,16 @@ fun CfeDetailContent(
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        // Header Card with Main Info
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-        ) {
-            Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                StatusChip(estado = doc.estadoCfe)
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "${doc.serie ?: ""} ${doc.numero ?: ""}",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "Tipo CFE: ${getCfeTypeLabel(doc.cfeCode)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = formattedTotalText ?: "${doc.monedaSimbolo ?: ""} ${doc.importeTotal}",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-
-        DetailSectionCard(title = "Receptor") {
-            DetailItemRow(label = "Nombre / Razón Social", value = doc.receptor)
-            DetailItemRow(label = "Estado Receptor", value = getEstadoReceptorLabel(doc.estadoReceptor))
-        }
-
-        DetailSectionCard(title = "Cronología") {
-            DetailItemRow(label = "Emisión", value = doc.fechaEmision?.take(16))
-            DetailItemRow(label = "Confirmación", value = doc.fechaConfirmacion?.take(16))
-            DetailItemRow(label = "Aceptado (UTC)", value = doc.fechaAceptadoUtc?.take(16))
-        }
-
         val isCfeInvoiceCode = doc.cfeCode == 101 || doc.cfeCode == 111
         val linkedFactura = viewModel?.linkedFactura
+
+        var canCollect = false
+        var cobroStatusText = if (isCfeInvoiceCode) "Pendiente de pago" else "No cobrable"
+        var cobroStatusColor = if (isCfeInvoiceCode) Color(0xFFE65100) else Color(0xFF757575)
+        var totalDisplay = doc.importeTotal ?: 0.0
+        var collectedDisplay = 0.0
+        var pendingDisplay = doc.importeTotal ?: 0.0
+        var symbol = doc.monedaSimbolo ?: "$"
 
         if (isCfeInvoiceCode && linkedFactura != null) {
             val baseTotal = linkedFactura.importeTotalBase ?: 0.0
@@ -184,66 +150,168 @@ fun CfeDetailContent(
             val collectedOrig = (linkedFactura.importeTotalOriginalCobrado ?: 0.0) + (linkedFactura.importeTotalOriginalAjustado ?: 0.0)
             val pendingOrig = kotlin.math.max(netTotalOrig - collectedOrig, 0.0)
 
-            val symbol = linkedFactura.moneda?.codigo ?: doc.monedaCodigo ?: "UYU"
+            symbol = linkedFactura.moneda?.codigo ?: doc.monedaCodigo ?: "$"
             val isBaseCurrency = (linkedFactura.moneda?.id == viewModel?.baseCurrencyId)
 
-            val totalDisplay = if (isBaseCurrency) baseTotal else origTotal
-            val collectedDisplay = if (isBaseCurrency) collectedBase else collectedOrig
-            val pendingDisplay = if (isBaseCurrency) pendingBase else pendingOrig
+            totalDisplay = if (isBaseCurrency) baseTotal else origTotal
+            collectedDisplay = if (isBaseCurrency) collectedBase else collectedOrig
+            pendingDisplay = if (isBaseCurrency) pendingBase else pendingOrig
 
-            val (cobroStatusColor, cobroStatusText) = when {
+            val pair = when {
                 pendingDisplay <= 0.00001 -> Color(0xFF2E7D32) to "Cobrado"
                 collectedDisplay > 0.0 -> Color(0xFF0288D1) to "Parcialmente cobrado"
-                else -> Color(0xFFE65100) to "Pendiente"
+                else -> Color(0xFFE65100) to "Pendiente de pago"
             }
+            cobroStatusColor = pair.first
+            cobroStatusText = pair.second
 
-            val canCollect = pendingDisplay > 0.00001 && linkedFactura.estado == 2 && doc.estadoCfe != 6 && doc.estadoCfe != 8
+            canCollect = pendingDisplay > 0.00001 && linkedFactura.estado == 2 && doc.estadoCfe != 6 && doc.estadoCfe != 8
+        }
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        // Top Hero Card with Main Info (Client, Dominant Amount, Date, CFE Type)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Cobranza", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Surface(
-                            color = cobroStatusColor.copy(alpha = 0.12f),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(
-                                text = cobroStatusText,
-                                color = cobroStatusColor,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-                    HorizontalDivider()
-                    DetailItemRow(label = "Total:", value = "$symbol ${String.format(java.util.Locale.US, "%.2f", totalDisplay)}")
-                    DetailItemRow(label = "Cobrado:", value = "$symbol ${String.format(java.util.Locale.US, "%.2f", collectedDisplay)}")
-                    DetailItemRow(label = "Pendiente:", value = "$symbol ${String.format(java.util.Locale.US, "%.2f", pendingDisplay)}")
+                // 1. Cliente / Receptor Name (Top)
+                Text(
+                    text = doc.receptor?.takeIf { it.isNotBlank() } ?: "Cliente no especificado",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
 
-                    if (canCollect) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Button(
-                            onClick = { onCollectInvoice(linkedFactura.id) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.Refresh, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Cobrar", fontWeight = FontWeight.Bold)
-                        }
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 2. Total Amount (DOMINANT / PROTAGONIST Large Font)
+                Text(
+                    text = formattedTotalText ?: "$symbol ${String.format(java.util.Locale.US, "%.2f", totalDisplay)}",
+                    style = MaterialTheme.typography.displaySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.ExtraBold
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 3. Fecha de Emisión (Below Total)
+                val fechaEmisionStr = doc.fechaEmision?.take(10) ?: ""
+                if (fechaEmisionStr.isNotBlank()) {
+                    Text(
+                        text = "Emisión: $fechaEmisionStr",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    StatusChip(estado = doc.estadoCfe)
+                    Text(
+                        text = "${getCfeTypeLabel(doc.cfeCode)} ${doc.serie ?: ""} ${doc.numero ?: ""}".trim(),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+
+        // Quick Actions Block (Añadir pago / Enviar)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Quick Action 1: "Añadir pago"
+                OutlinedButton(
+                    onClick = { if (linkedFactura != null) onCollectInvoice(linkedFactura.id) },
+                    enabled = canCollect,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Añadir pago", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
+                }
+
+                // Quick Action 2: "Enviar"
+                Button(
+                    onClick = onSharePdf,
+                    enabled = !isSharingPdf,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    if (isSharingPdf) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White)
+                    } else {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Enviar", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
+        }
+
+        // Payment Status Block
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Estado de Pago", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Surface(
+                        color = cobroStatusColor.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = cobroStatusText,
+                            color = cobroStatusColor,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+                if (isCfeInvoiceCode) {
+                    HorizontalDivider()
+                    DetailItemRow(label = "Total Documento:", value = "$symbol ${String.format(java.util.Locale.US, "%.2f", totalDisplay)}")
+                    DetailItemRow(label = "Monto Cobrado:", value = "$symbol ${String.format(java.util.Locale.US, "%.2f", collectedDisplay)}")
+                    DetailItemRow(label = "Monto Pendiente:", value = "$symbol ${String.format(java.util.Locale.US, "%.2f", pendingDisplay)}")
+                }
+            }
+        }
+
+        DetailSectionCard(title = "Receptor") {
+            DetailItemRow(label = "Nombre / Razón Social", value = doc.receptor)
+            DetailItemRow(label = "Estado Receptor", value = getEstadoReceptorLabel(doc.estadoReceptor))
+        }
+
+        DetailSectionCard(title = "Cronología") {
+            DetailItemRow(label = "Emisión", value = doc.fechaEmision?.take(16))
+            DetailItemRow(label = "Confirmación", value = doc.fechaConfirmacion?.take(16))
+            DetailItemRow(label = "Aceptado (UTC)", value = doc.fechaAceptadoUtc?.take(16))
         }
 
         if (!doc.ultimoError.isNullOrBlank()) {

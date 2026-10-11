@@ -23,6 +23,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.authvex.balaxysefactura.core.network.*
+import kotlinx.coroutines.delay
 import com.authvex.balaxysefactura.ui.screens.common.DatePickerField
 import com.authvex.balaxysefactura.ui.screens.common.DropdownSelector
 import java.text.NumberFormat
@@ -666,6 +667,10 @@ fun LineItemRow(linea: LineaForm, onEdit: () -> Unit, onRemove: () -> Unit) {
 
 @Composable
 fun SuccessView(documentoId: Long, message: String, onFinish: () -> Unit) {
+    LaunchedEffect(documentoId) {
+        delay(1000)
+        onFinish()
+    }
     Column(modifier = Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(100.dp))
         Spacer(modifier = Modifier.height(24.dp))
