@@ -71,24 +71,23 @@ fun AgingReportScreen(
                             modifier = Modifier.weight(1f)
                         )
 
-                        DropdownSelector(
-                            label = "Moneda",
-                            selectedOption = viewModel.selectedMoneda?.codigo ?: "Moneda",
-                            options = viewModel.tasasCambioList.map { "${it.denominacion} (${it.codigo})" },
-                            onOptionSelected = { index -> viewModel.onMonedaSelected(viewModel.tasasCambioList[index]) },
-                            modifier = Modifier.weight(1f)
-                        )
+                        OutlinedButton(
+                            onClick = { showClientDialog = true },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(viewModel.selectedCliente?.nombre ?: "Cliente: Todos", maxLines = 1)
+                        }
                     }
 
-                    OutlinedButton(
-                        onClick = { showClientDialog = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(viewModel.selectedCliente?.nombre ?: "Cliente: Todos", maxLines = 1)
-                    }
+                    Text(
+                        text = "Importes expresados en: ${viewModel.companyBaseCurrencyCode}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
 
@@ -109,7 +108,7 @@ fun AgingReportScreen(
                     }
                 }
                 is AgingReportUiState.Success -> {
-                    val symbol = viewModel.selectedMoneda?.codigo ?: "UYU"
+                    val symbol = viewModel.companyBaseCurrencyCode
 
                     if (uiState.hasFallback) {
                         Surface(

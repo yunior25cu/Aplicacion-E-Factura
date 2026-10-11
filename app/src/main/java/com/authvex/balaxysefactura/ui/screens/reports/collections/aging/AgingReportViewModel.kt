@@ -51,10 +51,9 @@ class AgingReportViewModel(
 
     var selectedPreset by mutableStateOf(DatePreset.THIS_MONTH)
     var companyBaseCurrencyId by mutableStateOf<Int?>(null)
-    var selectedMoneda by mutableStateOf<TasaCambioSimpleDto?>(null)
+    var companyBaseCurrencyCode by mutableStateOf("UYU")
     var selectedCliente by mutableStateOf<ClienteDto?>(null)
 
-    var tasasCambioList by mutableStateOf<List<TasaCambioSimpleDto>>(emptyList())
     var clientesList by mutableStateOf<List<ClienteDto>>(emptyList())
 
     private var clientSearchJob: Job? = null
@@ -97,17 +96,10 @@ class AgingReportViewModel(
         viewModelScope.launch {
             cfeRepository.getEmpresa().onSuccess { empresa ->
                 companyBaseCurrencyId = empresa.moneda?.id
+                companyBaseCurrencyCode = empresa.moneda?.codigo ?: "UYU"
             }
 
             cfeRepository.getClientes().onSuccess { clientesList = it }
-
-            val dates = getPresetDates(selectedPreset)
-            cfeRepository.getTasaCambios(dates.second).onSuccess { tasas ->
-                tasasCambioList = tasas
-                val baseId = companyBaseCurrencyId
-                val matched = if (baseId != null) tasas.find { it.id == baseId } else null
-                selectedMoneda = matched ?: tasas.firstOrNull()
-            }
 
             loadReport()
         }
@@ -122,7 +114,7 @@ class AgingReportViewModel(
                 fechaDesde = dates.first,
                 fechaHasta = dates.second,
                 idCliente = selectedCliente?.id?.toLong(),
-                idMoneda = selectedMoneda?.id?.toLong(),
+                idMoneda = null, // Backend aging amounts are ALWAYS in base currency!
                 estado = 1
             )
 
@@ -178,11 +170,6 @@ class AgingReportViewModel(
 
     fun onPresetSelected(preset: DatePreset) {
         selectedPreset = preset
-        loadReport()
-    }
-
-    fun onMonedaSelected(moneda: TasaCambioSimpleDto) {
-        selectedMoneda = moneda
         loadReport()
     }
 

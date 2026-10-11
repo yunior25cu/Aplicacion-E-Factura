@@ -89,7 +89,34 @@ class CollectionReportsContractTest {
     }
 
     @Test
-    fun `AGING_REPORT_USES_BACKEND_AGING_ENDPOINT and TOTAL_OVERDUE_EXCLUDES_NOT_DUE`() = runTest {
+    fun `RECEIVABLES_BASE_CURRENCY_USES_BASE_FIELDS and FOREIGN_CURRENCY_USES_ORIGINAL_FIELDS`() = runTest {
+        val dto = CuentasPorCobrarDto(
+            idCliente = 10L,
+            denominacionCliente = "ABITAB S A",
+            porCobrar = 40000.0,
+            porCobrarOriginal = 1000.0, // USD 1000 = UYU 40000
+            importeCobrado = 16000.0,
+            importeCobradoOriginal = 400.0
+        )
+
+        whenever(reportApi.getAccountsReceivable(any(), any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), any(), any()))
+            .thenReturn(listOf(dto))
+
+        val viewModel = ReceivablesReportViewModel(reportRepository, cfeRepository)
+
+        // Select foreign currency USD (id 51)
+        viewModel.onMonedaSelected(TasaCambioSimpleDto(51, "USD", "Dólar", "$", 2, 40.0))
+
+        assertTrue(viewModel.uiState is ReceivablesReportUiState.Success)
+        val state = viewModel.uiState as ReceivablesReportUiState.Success
+
+        // Must use ORIGINAL fields (1000.0) and NOT BASE fields (40000.0) when USD selected!
+        assertEquals(1000.0, state.totalPorCobrar, 0.001)
+        assertEquals(400.0, state.totalCobrado, 0.001)
+    }
+
+    @Test
+    fun `AGING_REPORT_USES_BACKEND_AGING_ENDPOINT and AMOUNTS_ARE_PRESENTED_IN_COMPANY_BASE_CURRENCY`() = runTest {
         val agingDto = CuentasPorCobrarAgingDto(
             idCliente = 10L,
             denominacionCliente = "ABITAB S A",
@@ -102,7 +129,7 @@ class CollectionReportsContractTest {
             tieneFallbackVencimiento = true
         )
 
-        whenever(reportApi.getAccountsReceivableAging(any(), any(), anyOrNull(), anyOrNull(), anyOrNull(), eq(50L), eq(1), eq(0)))
+        whenever(reportApi.getAccountsReceivableAging(any(), any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull()))
             .thenReturn(listOf(agingDto))
 
         val viewModel = AgingReportViewModel(reportRepository, cfeRepository)
@@ -110,6 +137,7 @@ class CollectionReportsContractTest {
         assertTrue(viewModel.uiState is AgingReportUiState.Success)
         val state = viewModel.uiState as AgingReportUiState.Success
 
+        assertEquals("UYU", viewModel.companyBaseCurrencyCode)
         assertEquals(500.0, state.sumNoVencido, 0.001)
         assertEquals(375.0, state.totalVencido, 0.001) // 200 + 100 + 50 + 25 = 375 (Excludes 500 NoVencido)
         assertEquals(875.0, state.grandTotal, 0.001)
