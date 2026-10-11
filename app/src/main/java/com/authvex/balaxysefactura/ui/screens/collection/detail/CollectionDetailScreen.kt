@@ -9,7 +9,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,12 +22,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.authvex.balaxysefactura.core.network.CobroDetailDto
+import com.authvex.balaxysefactura.core.repository.CfeRepository
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CollectionDetailScreen(
     viewModel: CollectionDetailViewModel,
+    cfeRepository: CfeRepository? = null,
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -36,6 +41,14 @@ fun CollectionDetailScreen(
         if (!msg.isNullOrBlank()) {
             Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
             viewModel.confirmMessage = null
+        }
+    }
+
+    LaunchedEffect(viewModel.receiptError) {
+        val err = viewModel.receiptError
+        if (!err.isNullOrBlank()) {
+            Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+            viewModel.receiptError = null
         }
     }
 
@@ -76,6 +89,7 @@ fun CollectionDetailScreen(
                 is CollectionDetailUiState.Success -> {
                     val collection = uiState.collection
                     val isUnconfirmed = collection.estado == 1
+                    val isConfirmed = collection.estado == 2
 
                     val (statusColor, statusText) = when (collection.estado) {
                         1 -> Color(0xFFE65100) to "Sin Confirmar"
@@ -155,6 +169,65 @@ fun CollectionDetailScreen(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                     )
+                                }
+                            }
+                        }
+
+                        // Document Receipt Actions for Confirmado (estado == 2)
+                        if (isConfirmed) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Text("Recibo de Cobro", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    HorizontalDivider()
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = { viewModel.viewReceipt(context, cfeRepository) },
+                                            enabled = !viewModel.isGeneratingReceipt,
+                                            modifier = Modifier.weight(1f).height(44.dp),
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Ver", style = MaterialTheme.typography.labelMedium)
+                                        }
+
+                                        /*
+                                        OutlinedButton(
+                                            onClick = { viewModel.printReceipt(context, cfeRepository) },
+                                            enabled = !viewModel.isGeneratingReceipt,
+                                            modifier = Modifier.weight(1f).height(44.dp),
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Imprimir", style = MaterialTheme.typography.labelMedium)
+                                        }
+                                        */
+
+                                        Button(
+                                            onClick = { viewModel.shareReceipt(context, cfeRepository) },
+                                            enabled = !viewModel.isGeneratingReceipt,
+                                            modifier = Modifier.weight(1f).height(44.dp),
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            if (viewModel.isGeneratingReceipt) {
+                                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White)
+                                            } else {
+                                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Compartir", style = MaterialTheme.typography.labelMedium)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

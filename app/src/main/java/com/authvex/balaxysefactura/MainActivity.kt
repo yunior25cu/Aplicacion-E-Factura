@@ -18,7 +18,7 @@ import com.authvex.balaxysefactura.core.auth.SessionManager
 import com.authvex.balaxysefactura.core.network.AuthApi
 import com.authvex.balaxysefactura.core.network.BudgetApi
 import com.authvex.balaxysefactura.core.network.CfeApi
-import com.authvex.balaxysefactura.core.network.CollectionApi
+ import com.authvex.balaxysefactura.core.network.CollectionApi
 import com.authvex.balaxysefactura.core.network.CollectionReportApi
 import com.authvex.balaxysefactura.core.network.ReportsApi
 import com.authvex.balaxysefactura.core.network.RetrofitClient
@@ -291,12 +291,13 @@ class MainActivity : ComponentActivity() {
                         val factory = object : ViewModelProvider.Factory {
                             @Suppress("UNCHECKED_CAST")
                             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                return CollectionDetailViewModel(collectionRepository, collectionId) as T
+                                return CollectionDetailViewModel(cfeRepository, collectionId, collectionRepository) as T
                             }
                         }
                         val detailViewModel: CollectionDetailViewModel = viewModel(factory = factory)
                         CollectionDetailScreen(
                             viewModel = detailViewModel,
+                            cfeRepository = cfeRepository,
                             onNavigateBack = { navController.popBackStack() }
                         )
                     }

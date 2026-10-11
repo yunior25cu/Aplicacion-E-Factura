@@ -5,6 +5,7 @@ import com.authvex.balaxysefactura.core.repository.CfeRepository
 import com.authvex.balaxysefactura.core.repository.CollectionRepository
 import com.authvex.balaxysefactura.ui.screens.collection.detail.CollectionDetailUiState
 import com.authvex.balaxysefactura.ui.screens.collection.detail.CollectionDetailViewModel
+import com.authvex.balaxysefactura.ui.screens.collection.detail.CollectionReceiptPdfGenerator
 import com.authvex.balaxysefactura.ui.screens.collection.form.CollectionFormUiState
 import com.authvex.balaxysefactura.ui.screens.collection.form.CollectionFormViewModel
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +32,7 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.io.File
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CollectionContractTest {
@@ -66,6 +68,130 @@ class CollectionContractTest {
     @After
     fun tearDown() {
         Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `RECEIPT_APPLIED_INVOICE_USES_CFE_SERIE_AND_NUMERO and DEDUPLICATES_LOOKUPS`() = runTest {
+        val collection = CobroDetailDto(
+            id = 83L,
+            folio = "CO-83/2026",
+            estado = 2,
+            facturaCobros = listOf(
+                FacturaCobroDetailDto(
+                    factura = CobroFacturaSummaryDto(id = 182L, folio = "FA-182/01/2025", fechaConfirmacion = "2025-12-27"),
+                    montoBase = 1019.97
+                ),
+                FacturaCobroDetailDto(
+                    factura = CobroFacturaSummaryDto(id = 182L, folio = "FA-182/01/2025", fechaConfirmacion = "2025-12-27"),
+                    montoBase = 100.0
+                )
+            )
+        )
+
+        val cfeDetail = CfeDetailDto(
+            documentoId = 182,
+            serie = "A",
+            numero = 20221L,
+            cfeCode = 111
+        )
+
+        whenever(cfeRepository.getDocumentDetail(182)).thenReturn(Result.success(cfeDetail))
+
+        val viewModel = CollectionDetailViewModel(cfeRepository, 83L, collectionRepository)
+
+        val resolvedInvoices = viewModel.resolveAppliedInvoicesForReceipt(collection, cfeRepository)
+
+        // CFE lookup deduplicated: called ONLY ONCE for documentId = 182
+        verify(cfeRepository, times(1)).getDocumentDetail(182)
+
+        assertEquals(2, resolvedInvoices.size)
+        assertEquals("A-20221", resolvedInvoices.first().fiscalReference)
+        assertFalse(resolvedInvoices.first().isFallback)
+        assertEquals("27/12/2025", resolvedInvoices.first().fecha)
+    }
+
+    @Test
+    fun `RECEIPT_FALLS_BACK_TO_INTERNAL_FOLIO_WHEN_CFE_UNAVAILABLE and ONE_FAILURE_DOES_NOT_BREAK_OTHER_ROWS`() = runTest {
+        val collection = CobroDetailDto(
+            id = 83L,
+            folio = "CO-83/2026",
+            estado = 2,
+            facturaCobros = listOf(
+                FacturaCobroDetailDto(
+                    factura = CobroFacturaSummaryDto(id = 182L, folio = "FA-182/01/2025", fechaConfirmacion = "2025-12-27"),
+                    montoBase = 1000.0
+                ),
+                FacturaCobroDetailDto(
+                    factura = CobroFacturaSummaryDto(id = 183L, folio = "FA-183/01/2025", fechaConfirmacion = "2025-12-28"),
+                    montoBase = 500.0
+                )
+            )
+        )
+
+        val cfeDetail182 = CfeDetailDto(documentoId = 182, serie = "A", numero = 20221L, cfeCode = 111)
+
+        whenever(cfeRepository.getDocumentDetail(182)).thenReturn(Result.success(cfeDetail182))
+        whenever(cfeRepository.getDocumentDetail(183)).thenReturn(Result.failure(Exception("CFE tracking unavailable")))
+
+        val viewModel = CollectionDetailViewModel(cfeRepository, 83L, collectionRepository)
+
+        val resolvedInvoices = viewModel.resolveAppliedInvoicesForReceipt(collection, cfeRepository)
+
+        assertEquals(2, resolvedInvoices.size)
+        // Row 1: CFE resolved -> A-20221
+        assertEquals("A-20221", resolvedInvoices[0].fiscalReference)
+        assertFalse(resolvedInvoices[0].isFallback)
+
+        // Row 2: CFE failed -> Fallback to internal folio FA-183/01/2025
+        assertEquals("FA-183/01/2025", resolvedInvoices[1].fiscalReference)
+        assertTrue(resolvedInvoices[1].isFallback)
+    }
+
+    @Test
+    fun `EXISTING_FILE_PROVIDER_PATHS_PRESERVED_AND_COBROS_PATH_ADDED`() {
+        val file = listOf(
+            File("app/src/main/res/xml/file_paths.xml"),
+            File("src/main/res/xml/file_paths.xml")
+        ).firstOrNull { it.exists() }
+        assertNotNull("file_paths.xml must exist", file)
+        val filePathsXml = file!!.readText()
+        assertTrue(filePathsXml.contains("""path="presupuestos/""""))
+        assertTrue(filePathsXml.contains("""path="cfe/""""))
+        assertTrue(filePathsXml.contains("""path="cobros/""""))
+        assertTrue(filePathsXml.contains("""name="cobros""""))
+    }
+
+    @Test
+    fun `RECEIPT_FILENAME_IS_SANITIZED`() {
+        val sanitized = CollectionReceiptPdfGenerator.sanitizeFilename("CO-83/2026")
+        assertEquals("CO-83-2026", sanitized)
+        assertFalse(sanitized.contains("/"))
+    }
+
+    @Test
+    fun `RECEIPT_REFETCHES_COLLECTION_BEFORE_RENDER and USES_EXISTING_COLLECTION_FOLIO`() = runTest {
+        val confirmedDto = CobroDetailDto(
+            id = 83L,
+            folio = "CO-83/2026",
+            estado = 2, // Confirmado
+            montoTotalBase = 1000.0,
+            montoTotalOriginal = 0.0,
+            moneda = CatalogoItemDto(50, "Pesos", "UYU")
+        )
+
+        whenever(collectionRepository.getCobroById(83L)).thenReturn(Result.success(confirmedDto))
+
+        val viewModel = CollectionDetailViewModel(cfeRepository, 83L, collectionRepository)
+
+        viewModel.generateReceiptAndExecute(mock(), cfeRepository) {
+            Result.success(Unit)
+        }
+
+        // Verifies refetch was done (init load + generate refetch)
+        verify(collectionRepository, times(2)).getCobroById(83L)
+        // Verifies POST /Cobro and confirm were NEVER called during receipt generation
+        verify(collectionRepository, never()).createCobro(any())
+        verify(collectionRepository, never()).confirmCobro(any())
     }
 
     @Test
@@ -162,7 +288,7 @@ class CollectionContractTest {
 
         whenever(collectionRepository.confirmCobro(83L)).thenReturn(Result.success(Unit))
 
-        val viewModel = CollectionDetailViewModel(collectionRepository, 83L)
+        val viewModel = CollectionDetailViewModel(cfeRepository, 83L, collectionRepository)
 
         // Verifies initial state is SinConfirmar
         assertTrue(viewModel.uiState is CollectionDetailUiState.Success)
@@ -194,7 +320,7 @@ class CollectionContractTest {
         whenever(collectionRepository.getCobroById(83L)).thenReturn(Result.success(unconfirmedDto))
         whenever(collectionRepository.confirmCobro(83L)).thenReturn(Result.failure(Exception("Período contable cerrado")))
 
-        val viewModel = CollectionDetailViewModel(collectionRepository, 83L)
+        val viewModel = CollectionDetailViewModel(cfeRepository, 83L, collectionRepository)
 
         viewModel.confirmCollection()
 

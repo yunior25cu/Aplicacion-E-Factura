@@ -55,21 +55,20 @@ data class CfeSummaryDto(
 
 @Serializable
 data class CfeDetailDto(
-    val documentoId: Int,
-    val serie: String?,
-    val numero: Long?,
-    val cfeCode: Int?,
-    val estadoCfe: Int?,
-    val estadoReceptor: Int?,
-    val receptor: String?,
-    val fechaEmision: String?,
-    val fechaConfirmacion: String?,
-    val fechaEnvioUtc: String?,
-    val fechaAceptadoUtc: String?,
-    val importeTotal: Double?,
-    val iva: Double?,
-    val monedaCodigo: String?,
-    val monedaSimbolo: String?,
-    val ultimoError: String?
-    // dgiToken, dgiIdRespuesta, qrText, hashQr OMITIDOS POR SEGURIDAD
+    val documentoId: Int = 0,
+    val serie: String? = null,
+    val numero: Long? = null,
+    val cfeCode: Int? = null,
+    val estadoCfe: Int? = null,
+    val estadoReceptor: Int? = null,
+    val receptor: String? = null,
+    val fechaEmision: String? = null,
+    val fechaConfirmacion: String? = null,
+    val fechaEnvioUtc: String? = null,
+    val fechaAceptadoUtc: String? = null,
+    val importeTotal: Double? = null,
+    val iva: Double? = null,
+    val monedaCodigo: String? = null,
+    val monedaSimbolo: String? = null,
+    val ultimoError: String? = null
 )
