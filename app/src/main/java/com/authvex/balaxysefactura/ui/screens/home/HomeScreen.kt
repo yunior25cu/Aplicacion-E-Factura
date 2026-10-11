@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -30,7 +31,8 @@ fun HomeScreen(
     onEmitDocument: () -> Unit = {},
     onViewReports: () -> Unit = {},
     onViewBudgets: () -> Unit = {},
-    onViewCollections: () -> Unit = {}
+    onViewCollections: () -> Unit = {},
+    onOpenScan: () -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -123,7 +125,14 @@ fun HomeScreen(
                     modifier = Modifier.weight(1f),
                     onClick = onViewReports
                 )
-                Spacer(modifier = Modifier.weight(1f))
+                ActionCard(
+                    title = "Escanear",
+                    subtitle = "Digitalizar documento",
+                    icon = Icons.Default.DocumentScanner,
+                    color = Color(0xFFE65100),
+                    modifier = Modifier.weight(1f),
+                    onClick = onOpenScan
+                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))

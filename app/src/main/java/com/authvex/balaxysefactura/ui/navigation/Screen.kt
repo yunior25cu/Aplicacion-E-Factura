@@ -28,4 +28,9 @@ sealed class Screen(val route: String) {
     object ReceivablesReport : Screen("reports_receivables")
     object AgingReport : Screen("reports_aging")
     object CollectedReport : Screen("reports_collected")
+    object Scan : Screen("scan")
+    object ScanStatus : Screen("scan_status/{documentId}") {
+        fun createRoute(documentId: Long) = "scan_status/$documentId"
+    }
+    object ScanInbox : Screen("scan_inbox")
 }

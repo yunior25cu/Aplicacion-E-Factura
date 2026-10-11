@@ -22,12 +22,20 @@ import com.authvex.balaxysefactura.core.network.CfeApi
 import com.authvex.balaxysefactura.core.network.CollectionReportApi
 import com.authvex.balaxysefactura.core.network.ReportsApi
 import com.authvex.balaxysefactura.core.network.RetrofitClient
+import com.authvex.balaxysefactura.core.network.ScanApi
 import com.authvex.balaxysefactura.core.repository.BudgetRepository
 import com.authvex.balaxysefactura.core.repository.CfeRepository
 import com.authvex.balaxysefactura.core.repository.CollectionReportRepository
 import com.authvex.balaxysefactura.core.repository.CollectionRepository
 import com.authvex.balaxysefactura.core.repository.ReportsRepository
+import com.authvex.balaxysefactura.core.repository.ScanRepository
 import com.authvex.balaxysefactura.ui.navigation.Screen
+import com.authvex.balaxysefactura.ui.screens.scan.ScanScreen
+import com.authvex.balaxysefactura.ui.screens.scan.ScanStatusScreen
+import com.authvex.balaxysefactura.ui.screens.scan.ScanStatusViewModel
+import com.authvex.balaxysefactura.ui.screens.scan.ScanViewModel
+import com.authvex.balaxysefactura.ui.screens.scan.inbox.ScanInboxScreen
+import com.authvex.balaxysefactura.ui.screens.scan.inbox.ScanInboxViewModel
 import com.authvex.balaxysefactura.ui.screens.collection.detail.CollectionDetailScreen
 import com.authvex.balaxysefactura.ui.screens.collection.detail.CollectionDetailViewModel
 import com.authvex.balaxysefactura.ui.screens.collection.form.CollectionFormScreen
@@ -75,12 +83,14 @@ class MainActivity : ComponentActivity() {
         val budgetApi = retrofitClient.create(BudgetApi::class.java)
         val collectionApi = retrofitClient.create(CollectionApi::class.java)
         val collectionReportApi = retrofitClient.create(CollectionReportApi::class.java)
+        val scanApi = retrofitClient.create(ScanApi::class.java)
 
         val cfeRepository = CfeRepository(cfeApi)
         val reportsRepository = ReportsRepository(reportsApi)
         val budgetRepository = BudgetRepository(budgetApi)
         val collectionRepository = CollectionRepository(collectionApi)
         val collectionReportRepository = CollectionReportRepository(collectionReportApi, collectionApi)
+        val scanRepository = ScanRepository(scanApi)
 
         val startDestination = runBlocking {
             if (authPreferences.getAuthTokenSync() != null) Screen.Home.route else Screen.Login.route
@@ -145,6 +155,9 @@ class MainActivity : ComponentActivity() {
                             },
                             onViewCollections = {
                                 navController.navigate(Screen.Collections.route)
+                            },
+                            onOpenScan = {
+                                navController.navigate(Screen.Scan.route)
                             }
                         )
                     }
@@ -396,6 +409,63 @@ class MainActivity : ComponentActivity() {
                             onNavigateBack = { navController.popBackStack() },
                             onNavigateToCollectionDetail = { id ->
                                 navController.navigate(Screen.CollectionDetail.createRoute(id))
+                            }
+                        )
+                    }
+                    composable(Screen.Scan.route) {
+                        val factory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return ScanViewModel(scanRepository) as T
+                            }
+                        }
+                        val scanViewModel: ScanViewModel = viewModel(factory = factory)
+                        ScanScreen(
+                            viewModel = scanViewModel,
+                            onNavigateBack = { navController.popBackStack() },
+                            onNavigateToInbox = { navController.navigate(Screen.ScanInbox.route) },
+                            onUploadSuccess = { docId ->
+                                navController.navigate(Screen.ScanStatus.createRoute(docId)) {
+                                    popUpTo(Screen.Home.route)
+                                }
+                            }
+                        )
+                    }
+                    composable(
+                        route = Screen.ScanStatus.route,
+                        arguments = listOf(navArgument("documentId") { type = NavType.LongType })
+                    ) { backStackEntry ->
+                        val docId = backStackEntry.arguments?.getLong("documentId") ?: 0L
+                        val factory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return ScanStatusViewModel(scanRepository, docId) as T
+                            }
+                        }
+                        val statusViewModel: ScanStatusViewModel = viewModel(factory = factory)
+                        ScanStatusScreen(
+                            viewModel = statusViewModel,
+                            onNavigateHome = {
+                                navController.navigate(Screen.Home.route) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            },
+                            onNavigateToInbox = { navController.navigate(Screen.ScanInbox.route) }
+                        )
+                    }
+                    composable(Screen.ScanInbox.route) {
+                        val factory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return ScanInboxViewModel(scanRepository) as T
+                            }
+                        }
+                        val inboxViewModel: ScanInboxViewModel = viewModel(factory = factory)
+                        ScanInboxScreen(
+                            viewModel = inboxViewModel,
+                            onNavigateBack = { navController.popBackStack() },
+                            onNavigateToStatus = { docId ->
+                                navController.navigate(Screen.ScanStatus.createRoute(docId))
                             }
                         )
                     }
