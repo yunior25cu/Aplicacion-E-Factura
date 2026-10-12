@@ -229,12 +229,17 @@ fun CollectionFormScreen(
                                     }
 
                                     if (item.isSelected) {
+                                        val valErr = item.getValidationError(symbol)
                                         OutlinedTextField(
                                             value = item.montoCobrarText,
                                             onValueChange = { text ->
                                                 viewModel.pendingInvoices[index] = item.copy(montoCobrarText = text)
                                             },
                                             label = { Text("Importe a Cobrar ($symbol)") },
+                                            isError = valErr != null,
+                                            supportingText = if (valErr != null) {
+                                                { Text(valErr, color = MaterialTheme.colorScheme.error) }
+                                            } else null,
                                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                             singleLine = true,
                                             modifier = Modifier.fillMaxWidth()
@@ -282,13 +287,14 @@ fun CollectionFormScreen(
             }
 
             // Buttons: Guardar | Guardar y Confirmar
+            val isInvalid = viewModel.hasInvalidInvoices()
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 OutlinedButton(
                     onClick = { viewModel.saveCollection(andConfirm = false) },
-                    enabled = !viewModel.isSubmitting,
+                    enabled = !viewModel.isSubmitting && !isInvalid,
                     modifier = Modifier.weight(1f).height(52.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -296,8 +302,12 @@ fun CollectionFormScreen(
                 }
 
                 Button(
-                    onClick = { showConfirmDialog = true },
-                    enabled = !viewModel.isSubmitting,
+                    onClick = {
+                        if (!viewModel.hasInvalidInvoices()) {
+                            showConfirmDialog = true
+                        }
+                    },
+                    enabled = !viewModel.isSubmitting && !isInvalid,
                     modifier = Modifier.weight(1f).height(52.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {

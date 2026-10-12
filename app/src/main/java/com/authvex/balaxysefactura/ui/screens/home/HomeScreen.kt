@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DocumentScanner
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -109,7 +110,7 @@ fun HomeScreen(
                 ActionCard(
                     title = "Cobros",
                     subtitle = "Pagos recibidos",
-                    icon = Icons.AutoMirrored.Filled.List,
+                    icon = Icons.Default.Payments,
                     color = Color(0xFF673AB7),
                     modifier = Modifier.weight(1f),
                     onClick = onViewCollections

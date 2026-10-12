@@ -25,6 +25,26 @@ data class PendingInvoiceItem(
     fun getPendingDisplay(currencyCode: String): Double {
         return if (currencyCode != "UYU" && pendingOriginal > 0) pendingOriginal else pendingBase
     }
+
+    fun getAmountValue(): Double {
+        return montoCobrarText.replace(',', '.').toDoubleOrNull() ?: 0.0
+    }
+
+    fun getValidationError(currencyCode: String): String? {
+        if (!isSelected) return null
+        val valAmt = getAmountValue()
+        val pending = getPendingDisplay(currencyCode)
+        return when {
+            valAmt <= 0.00001 -> "El importe a cobrar debe ser mayor que cero."
+            valAmt > pending + 0.00001 -> "El importe a cobrar no puede superar el saldo pendiente de la factura."
+            else -> null
+        }
+    }
+
+    fun isValid(currencyCode: String): Boolean {
+        if (!isSelected) return true
+        return getValidationError(currencyCode) == null
+    }
 }
 
 sealed class CollectionFormUiState {
@@ -250,6 +270,13 @@ class CollectionFormViewModel(
         }
     }
 
+    fun hasInvalidInvoices(): Boolean {
+        val curr = selectedMoneda?.codigo ?: "UYU"
+        val selected = pendingInvoices.filter { it.isSelected }
+        if (selected.isEmpty()) return true
+        return selected.any { !it.isValid(curr) }
+    }
+
     fun saveCollection(andConfirm: Boolean) {
         if (isSubmitting) return
 
@@ -277,9 +304,23 @@ class CollectionFormViewModel(
             return
         }
 
-        val selectedInvoices = pendingInvoices.filter { it.isSelected && (it.montoCobrarText.replace(',', '.').toDoubleOrNull() ?: 0.0) > 0 }
+        val currCode = moneda.codigo ?: "UYU"
+        val selectedInvoices = pendingInvoices.filter { it.isSelected }
         if (selectedInvoices.isEmpty()) {
-            uiState = CollectionFormUiState.Error("Debe seleccionar al menos una factura con importe a cobrar mayor a cero")
+            uiState = CollectionFormUiState.Error("Debe seleccionar al menos una factura")
+            return
+        }
+
+        val invalidInvoice = selectedInvoices.find { !it.isValid(currCode) }
+        if (invalidInvoice != null) {
+            val errMsg = invalidInvoice.getValidationError(currCode) ?: "Importe de factura inválido"
+            uiState = CollectionFormUiState.Error(errMsg)
+            return
+        }
+
+        val totalOperacion = calculateTotalOperacion()
+        if (totalOperacion <= 0.00001) {
+            uiState = CollectionFormUiState.Error("El total del cobro debe ser mayor que cero")
             return
         }
 
@@ -296,12 +337,11 @@ class CollectionFormViewModel(
                 val isBaseCurrency = companyBaseCurrencyId != null && moneda.id == companyBaseCurrencyId
                 val rate = if (isBaseCurrency) 1.0 else (if (tasaCambio > 0) tasaCambio else 1.0)
 
-                val totalOperacion = calculateTotalOperacion()
                 val totalBase = if (isBaseCurrency) totalOperacion else totalOperacion * rate
                 val totalOrig = if (isBaseCurrency) 0.0 else totalOperacion
 
                 val facturaCobrosRequests = selectedInvoices.map { item ->
-                    val amountOp = item.montoCobrarText.replace(',', '.').toDoubleOrNull() ?: 0.0
+                    val amountOp = item.getAmountValue()
                     val amountBase = if (isBaseCurrency) amountOp else amountOp * rate
                     val amountOrig = if (isBaseCurrency) 0.0 else amountOp
 

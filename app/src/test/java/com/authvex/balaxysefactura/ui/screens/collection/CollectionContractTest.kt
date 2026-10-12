@@ -8,6 +8,7 @@ import com.authvex.balaxysefactura.ui.screens.collection.detail.CollectionDetail
 import com.authvex.balaxysefactura.ui.screens.collection.detail.CollectionReceiptPdfGenerator
 import com.authvex.balaxysefactura.ui.screens.collection.form.CollectionFormUiState
 import com.authvex.balaxysefactura.ui.screens.collection.form.CollectionFormViewModel
+import com.authvex.balaxysefactura.ui.screens.collection.form.PendingInvoiceItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -68,6 +69,72 @@ class CollectionContractTest {
     @After
     fun tearDown() {
         Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `COLLECTION_AMOUNT_VALIDATIONS_ZERO_NEGATIVE_OVER_BALANCE_PARTIAL_FULL`() {
+        val invoice = CollectionInvoiceDto(id = 100L, importeTotalBase = 1000.0)
+        val itemZero = PendingInvoiceItem(factura = invoice, pendingBase = 1000.0, pendingOriginal = 0.0, montoCobrarText = "0.0", isSelected = true)
+        val itemNeg = PendingInvoiceItem(factura = invoice, pendingBase = 1000.0, pendingOriginal = 0.0, montoCobrarText = "-10.0", isSelected = true)
+        val itemOver = PendingInvoiceItem(factura = invoice, pendingBase = 1000.0, pendingOriginal = 0.0, montoCobrarText = "1000.01", isSelected = true)
+        val itemPartial = PendingInvoiceItem(factura = invoice, pendingBase = 1000.0, pendingOriginal = 0.0, montoCobrarText = "400.0", isSelected = true)
+        val itemFull = PendingInvoiceItem(factura = invoice, pendingBase = 1000.0, pendingOriginal = 0.0, montoCobrarText = "1000.0", isSelected = true)
+
+        assertFalse(itemZero.isValid("UYU"))
+        assertEquals("El importe a cobrar debe ser mayor que cero.", itemZero.getValidationError("UYU"))
+
+        assertFalse(itemNeg.isValid("UYU"))
+        assertEquals("El importe a cobrar debe ser mayor que cero.", itemNeg.getValidationError("UYU"))
+
+        assertFalse(itemOver.isValid("UYU"))
+        assertEquals("El importe a cobrar no puede superar el saldo pendiente de la factura.", itemOver.getValidationError("UYU"))
+
+        assertTrue(itemPartial.isValid("UYU"))
+        assertNull(itemPartial.getValidationError("UYU"))
+
+        assertTrue(itemFull.isValid("UYU"))
+        assertNull(itemFull.getValidationError("UYU"))
+    }
+
+    @Test
+    fun `COLLECTION_CANNOT_CONFIRM_IF_ANY_SELECTED_INVOICE_INVALID`() = runTest {
+        val viewModel = CollectionFormViewModel(collectionRepository, cfeRepository)
+
+        viewModel.selectedCliente = ClienteDto(10, "ABITAB S A")
+        viewModel.selectedCuentaBanco = CuentaBancoCatalogDto(1, numeroCuenta = "123")
+        viewModel.selectedFormaPago = CatalogoItemDto(1, "Efectivo")
+        viewModel.selectedMoneda = TasaCambioSimpleDto(50, "UYU", "Pesos", "$", 2, 1.0)
+
+        // Invoice A: $200 (Valid)
+        viewModel.pendingInvoices.add(
+            PendingInvoiceItem(
+                factura = CollectionInvoiceDto(id = 100L),
+                pendingBase = 500.0,
+                pendingOriginal = 0.0,
+                montoCobrarText = "200.0",
+                isSelected = true
+            )
+        )
+
+        // Invoice B: $0 (Invalid)
+        viewModel.pendingInvoices.add(
+            PendingInvoiceItem(
+                factura = CollectionInvoiceDto(id = 200L),
+                pendingBase = 300.0,
+                pendingOriginal = 0.0,
+                montoCobrarText = "0.0",
+                isSelected = true
+            )
+        )
+
+        assertTrue(viewModel.hasInvalidInvoices())
+
+        viewModel.saveCollection(andConfirm = false)
+
+        verify(collectionRepository, never()).createCobro(any())
+        assertTrue(viewModel.uiState is CollectionFormUiState.Error)
+        val errState = viewModel.uiState as CollectionFormUiState.Error
+        assertEquals("El importe a cobrar debe ser mayor que cero.", errState.message)
     }
 
     @Test
