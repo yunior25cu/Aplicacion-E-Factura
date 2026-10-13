@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -28,12 +29,26 @@ fun SharedClientSelectDialog(
     isSearching: Boolean = false,
     onSearch: (String) -> Unit,
     onSelect: (ClienteDto) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onCreateNewClient: (() -> Unit)? = null
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Card(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f)) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Seleccionar Cliente", style = MaterialTheme.typography.titleLarge)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Seleccionar Cliente", style = MaterialTheme.typography.titleLarge)
+                    if (onCreateNewClient != null) {
+                        TextButton(onClick = onCreateNewClient) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Nuevo", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 var query by remember { mutableStateOf("") }
                 OutlinedTextField(

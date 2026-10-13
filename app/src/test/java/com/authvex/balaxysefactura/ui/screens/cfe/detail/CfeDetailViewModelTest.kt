@@ -64,7 +64,7 @@ class CfeDetailViewModelTest {
 
     @Test
     fun `state is Error when repository returns failure`() = runTest {
-        val error = AppError.NotFound
+        val error = AppError.NotFound()
         val viewModel = CfeDetailViewModel(FakeCfeRepository(Result.failure(error)), 1)
         
         advanceUntilIdle()

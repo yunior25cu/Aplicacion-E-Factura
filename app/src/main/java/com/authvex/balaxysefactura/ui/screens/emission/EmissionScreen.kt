@@ -34,7 +34,8 @@ import java.util.*
 fun EmissionScreen(
     viewModel: EmissionViewModel, 
     onBack: () -> Unit,
-    onNavigateToDetail: (Long) -> Unit
+    onNavigateToDetail: (Long) -> Unit,
+    onOpenCreateClient: () -> Unit = {}
 ) {
     val state = viewModel.uiState
 
@@ -68,7 +69,7 @@ fun EmissionScreen(
                     TypeSelectionView(state.types, onSelect = { viewModel.selectFiscalType(it) })
                 }
                 is EmissionUiState.FillForm -> {
-                    EmissionFormView(viewModel, state.type, state.pos)
+                    EmissionFormView(viewModel, state.type, state.pos, onOpenCreateClient = onOpenCreateClient)
                 }
                 is EmissionUiState.Processing -> {
                     ProcessingState(state.message, modifier = Modifier.align(Alignment.Center))
@@ -132,7 +133,12 @@ fun TypeSelectionView(types: List<CfeFiscalDocumentAvailabilityItemDto>, onSelec
 }
 
 @Composable
-fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvailabilityItemDto, pos: PuntoVentaDto) {
+fun EmissionFormView(
+    viewModel: EmissionViewModel,
+    type: CfeFiscalDocumentAvailabilityItemDto,
+    pos: PuntoVentaDto,
+    onOpenCreateClient: () -> Unit = {}
+) {
     val catalogs = viewModel.cachedCatalogs ?: return
 
     Column(
@@ -244,7 +250,7 @@ fun EmissionFormView(viewModel: EmissionViewModel, type: CfeFiscalDocumentAvaila
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Cliente", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    ClientSelector(viewModel)
+                    ClientSelector(viewModel, onOpenCreateClient)
                 }
             }
 
@@ -582,7 +588,7 @@ private fun getCfeTypeLabel(code: Int?): String {
 }
 
 @Composable
-fun ClientSelector(viewModel: EmissionViewModel) {
+fun ClientSelector(viewModel: EmissionViewModel, onOpenCreateClient: () -> Unit = {}) {
     var showDialog by remember { mutableStateOf(false) }
     OutlinedCard(onClick = { showDialog = true }, modifier = Modifier.fillMaxWidth()) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -607,7 +613,11 @@ fun ClientSelector(viewModel: EmissionViewModel) {
                 viewModel.selectedCliente = client
                 showDialog = false
             },
-            onDismiss = { showDialog = false }
+            onDismiss = { showDialog = false },
+            onCreateNewClient = {
+                showDialog = false
+                onOpenCreateClient()
+            }
         )
     }
 }

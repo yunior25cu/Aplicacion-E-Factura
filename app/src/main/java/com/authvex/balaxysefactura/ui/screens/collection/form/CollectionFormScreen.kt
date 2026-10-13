@@ -30,7 +30,8 @@ import java.util.Locale
 fun CollectionFormScreen(
     viewModel: CollectionFormViewModel,
     onNavigateBack: () -> Unit,
-    onCollectionSaved: (Long) -> Unit
+    onCollectionSaved: (Long) -> Unit,
+    onOpenCreateClient: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val uiState = viewModel.uiState
@@ -330,7 +331,11 @@ fun CollectionFormScreen(
                 viewModel.onClientSelected(it)
                 showClientDialog = false
             },
-            onDismiss = { showClientDialog = false }
+            onDismiss = { showClientDialog = false },
+            onCreateNewClient = {
+                showClientDialog = false
+                onOpenCreateClient()
+            }
         )
     }
 

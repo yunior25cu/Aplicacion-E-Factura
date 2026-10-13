@@ -18,18 +18,22 @@ import com.authvex.balaxysefactura.core.auth.SessionManager
 import com.authvex.balaxysefactura.core.network.AuthApi
 import com.authvex.balaxysefactura.core.network.BudgetApi
 import com.authvex.balaxysefactura.core.network.CfeApi
- import com.authvex.balaxysefactura.core.network.CollectionApi
+import com.authvex.balaxysefactura.core.network.ClientApi
+import com.authvex.balaxysefactura.core.network.CollectionApi
 import com.authvex.balaxysefactura.core.network.CollectionReportApi
 import com.authvex.balaxysefactura.core.network.ReportsApi
 import com.authvex.balaxysefactura.core.network.RetrofitClient
 import com.authvex.balaxysefactura.core.network.ScanApi
 import com.authvex.balaxysefactura.core.repository.BudgetRepository
 import com.authvex.balaxysefactura.core.repository.CfeRepository
+import com.authvex.balaxysefactura.core.repository.ClientRepository
 import com.authvex.balaxysefactura.core.repository.CollectionReportRepository
 import com.authvex.balaxysefactura.core.repository.CollectionRepository
 import com.authvex.balaxysefactura.core.repository.ReportsRepository
 import com.authvex.balaxysefactura.core.repository.ScanRepository
 import com.authvex.balaxysefactura.ui.navigation.Screen
+import com.authvex.balaxysefactura.ui.screens.client.ClientCreateScreen
+import com.authvex.balaxysefactura.ui.screens.client.ClientCreateViewModel
 import com.authvex.balaxysefactura.ui.screens.scan.ScanScreen
 import com.authvex.balaxysefactura.ui.screens.scan.ScanStatusScreen
 import com.authvex.balaxysefactura.ui.screens.scan.ScanStatusViewModel
@@ -84,6 +88,7 @@ class MainActivity : ComponentActivity() {
         val collectionApi = retrofitClient.create(CollectionApi::class.java)
         val collectionReportApi = retrofitClient.create(CollectionReportApi::class.java)
         val scanApi = retrofitClient.create(ScanApi::class.java)
+        val clientApi = retrofitClient.create(ClientApi::class.java)
 
         val cfeRepository = CfeRepository(cfeApi)
         val reportsRepository = ReportsRepository(reportsApi)
@@ -91,6 +96,7 @@ class MainActivity : ComponentActivity() {
         val collectionRepository = CollectionRepository(collectionApi)
         val collectionReportRepository = CollectionReportRepository(collectionReportApi, collectionApi)
         val scanRepository = ScanRepository(scanApi)
+        val clientRepository = ClientRepository(clientApi)
 
         val startDestination = runBlocking {
             if (authPreferences.getAuthTokenSync() != null) Screen.Home.route else Screen.Login.route
@@ -333,7 +339,8 @@ class MainActivity : ComponentActivity() {
                                 navController.navigate(Screen.CollectionDetail.createRoute(createdId)) {
                                     popUpTo(Screen.Collections.route)
                                 }
-                            }
+                            },
+                            onOpenCreateClient = { navController.navigate(Screen.ClientCreate.route) }
                         )
                     }
                     composable(Screen.Emission.route) {
@@ -351,7 +358,8 @@ class MainActivity : ComponentActivity() {
                                 navController.navigate(Screen.CfeDetail.createRoute(id)) {
                                     popUpTo(Screen.Home.route)
                                 }
-                            }
+                            },
+                            onOpenCreateClient = { navController.navigate(Screen.ClientCreate.route) }
                         )
                     }
                     composable(Screen.Reports.route) {
@@ -466,6 +474,22 @@ class MainActivity : ComponentActivity() {
                             onNavigateBack = { navController.popBackStack() },
                             onNavigateToStatus = { docId ->
                                 navController.navigate(Screen.ScanStatus.createRoute(docId))
+                            }
+                        )
+                    }
+                    composable(Screen.ClientCreate.route) {
+                        val factory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return ClientCreateViewModel(clientRepository) as T
+                            }
+                        }
+                        val clientViewModel: ClientCreateViewModel = viewModel(factory = factory)
+                        ClientCreateScreen(
+                            viewModel = clientViewModel,
+                            onNavigateBack = { navController.popBackStack() },
+                            onClientCreated = { _, _ ->
+                                navController.popBackStack()
                             }
                         )
                     }

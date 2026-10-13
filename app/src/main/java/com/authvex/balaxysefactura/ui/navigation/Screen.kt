@@ -33,4 +33,5 @@ sealed class Screen(val route: String) {
         fun createRoute(documentId: Long) = "scan_status/$documentId"
     }
     object ScanInbox : Screen("scan_inbox")
+    object ClientCreate : Screen("client_create")
 }
