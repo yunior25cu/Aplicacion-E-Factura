@@ -9,11 +9,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.authvex.balaxysefactura.ui.screens.common.DropdownSelector
@@ -28,8 +32,15 @@ fun CollectedReportScreen(
     onNavigateBack: () -> Unit,
     onNavigateToCollectionDetail: (Long) -> Unit
 ) {
+    val context = LocalContext.current
     val uiState = viewModel.uiState
     var showClientDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(viewModel.pdfError) {
+        viewModel.pdfError?.let { err ->
+            Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -38,6 +49,20 @@ fun CollectedReportScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Regresar")
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { viewModel.viewReportPdf(context) },
+                        enabled = !viewModel.isGeneratingPdf
+                    ) {
+                        Icon(Icons.Default.Visibility, contentDescription = "Ver informe")
+                    }
+                    IconButton(
+                        onClick = { viewModel.shareReportPdf(context) },
+                        enabled = !viewModel.isGeneratingPdf
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = "Compartir informe")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -53,6 +78,9 @@ fun CollectedReportScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (viewModel.isGeneratingPdf) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
             // Filtros
             Card(
                 modifier = Modifier.fillMaxWidth(),

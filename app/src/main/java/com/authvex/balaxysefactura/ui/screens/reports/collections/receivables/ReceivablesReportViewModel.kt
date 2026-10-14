@@ -1,5 +1,6 @@
 package com.authvex.balaxysefactura.ui.screens.reports.collections.receivables
 
+import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -8,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.authvex.balaxysefactura.core.network.*
 import com.authvex.balaxysefactura.core.repository.CfeRepository
 import com.authvex.balaxysefactura.core.repository.CollectionReportRepository
+import com.authvex.balaxysefactura.ui.screens.common.PdfShareHelper
 import com.authvex.balaxysefactura.ui.screens.reports.DatePreset
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -43,6 +45,12 @@ class ReceivablesReportViewModel(
     var tasasCambioList by mutableStateOf<List<TasaCambioSimpleDto>>(emptyList())
     var clientesList by mutableStateOf<List<ClienteDto>>(emptyList())
 
+    var isGeneratingPdf by mutableStateOf(false)
+        private set
+
+    var pdfError by mutableStateOf<String?>(null)
+        private set
+
     private var clientSearchJob: kotlinx.coroutines.Job? = null
 
     fun onClientQueryChanged(query: String) {
@@ -57,7 +65,7 @@ class ReceivablesReportViewModel(
         loadInitialData()
     }
 
-    private fun getPresetDates(preset: DatePreset): Pair<String, String> {
+    fun getPresetDates(preset: DatePreset): Pair<String, String> {
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val cal = Calendar.getInstance()
         val hasta = sdf.format(cal.time)
@@ -142,6 +150,106 @@ class ReceivablesReportViewModel(
             }.onFailure { throwable ->
                 val appError = ErrorMapper.fromThrowable(throwable)
                 uiState = ReceivablesReportUiState.Error(appError.getDisplayMessage())
+            }
+        }
+    }
+
+    fun viewReportPdf(context: Context) {
+        if (isGeneratingPdf) return
+        val currentSuccess = uiState as? ReceivablesReportUiState.Success ?: return
+        isGeneratingPdf = true
+        pdfError = null
+
+        viewModelScope.launch {
+            try {
+                val companyName = cfeRepository.getEmpresa().getOrNull()?.nombre ?: "Empresa"
+                val dates = getPresetDates(selectedPreset)
+                val currCode = selectedMoneda?.codigo ?: "UYU"
+                val currSymbol = selectedMoneda?.simbolo ?: "$"
+                val isBaseCurrency = companyBaseCurrencyId == null || selectedMoneda?.id == companyBaseCurrencyId
+
+                val stateLabel = when (selectedStateFilter) {
+                    1 -> "Por cobrar"
+                    2 -> "Cobrado"
+                    else -> "Todos"
+                }
+
+                val clientLabel = selectedCliente?.nombre ?: "Todos"
+
+                val docModel = ReceivablesReportDocumentModel(
+                    companyName = companyName,
+                    fechaDesde = dates.first,
+                    fechaHasta = dates.second,
+                    currencyCode = currCode,
+                    currencySymbol = currSymbol,
+                    stateFilterLabel = stateLabel,
+                    clientFilterLabel = clientLabel,
+                    isBaseCurrency = isBaseCurrency,
+                    state = currentSuccess
+                )
+
+                val pdfRes = ReceivablesReportPdfGenerator.generate(context, docModel)
+                pdfRes.onSuccess { pdfFile ->
+                    PdfShareHelper.openPdf(context, pdfFile, title = "Estado de Cuentas por Cobrar")
+                }.onFailure { err ->
+                    val appErr = ErrorMapper.fromThrowable(err)
+                    pdfError = appErr.getDisplayMessage()
+                }
+            } finally {
+                isGeneratingPdf = false
+            }
+        }
+    }
+
+    fun shareReportPdf(context: Context) {
+        if (isGeneratingPdf) return
+        val currentSuccess = uiState as? ReceivablesReportUiState.Success ?: return
+        isGeneratingPdf = true
+        pdfError = null
+
+        viewModelScope.launch {
+            try {
+                val companyName = cfeRepository.getEmpresa().getOrNull()?.nombre ?: "Empresa"
+                val dates = getPresetDates(selectedPreset)
+                val currCode = selectedMoneda?.codigo ?: "UYU"
+                val currSymbol = selectedMoneda?.simbolo ?: "$"
+                val isBaseCurrency = companyBaseCurrencyId == null || selectedMoneda?.id == companyBaseCurrencyId
+
+                val stateLabel = when (selectedStateFilter) {
+                    1 -> "Por cobrar"
+                    2 -> "Cobrado"
+                    else -> "Todos"
+                }
+
+                val clientLabel = selectedCliente?.nombre ?: "Todos"
+
+                val docModel = ReceivablesReportDocumentModel(
+                    companyName = companyName,
+                    fechaDesde = dates.first,
+                    fechaHasta = dates.second,
+                    currencyCode = currCode,
+                    currencySymbol = currSymbol,
+                    stateFilterLabel = stateLabel,
+                    clientFilterLabel = clientLabel,
+                    isBaseCurrency = isBaseCurrency,
+                    state = currentSuccess
+                )
+
+                val pdfRes = ReceivablesReportPdfGenerator.generate(context, docModel)
+                pdfRes.onSuccess { pdfFile ->
+                    PdfShareHelper.sharePdf(
+                        context = context,
+                        pdfFile = pdfFile,
+                        subject = "Estado de Cuentas por Cobrar (${dates.first} - ${dates.second})",
+                        text = "Adjunto informe Estado de Cuentas por Cobrar",
+                        chooserTitle = "Compartir Estado de Cuentas por Cobrar"
+                    )
+                }.onFailure { err ->
+                    val appErr = ErrorMapper.fromThrowable(err)
+                    pdfError = appErr.getDisplayMessage()
+                }
+            } finally {
+                isGeneratingPdf = false
             }
         }
     }

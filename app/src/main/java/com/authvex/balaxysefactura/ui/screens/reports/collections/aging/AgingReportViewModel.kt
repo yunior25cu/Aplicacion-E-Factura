@@ -1,5 +1,6 @@
 package com.authvex.balaxysefactura.ui.screens.reports.collections.aging
 
+import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -8,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.authvex.balaxysefactura.core.network.*
 import com.authvex.balaxysefactura.core.repository.CfeRepository
 import com.authvex.balaxysefactura.core.repository.CollectionReportRepository
+import com.authvex.balaxysefactura.ui.screens.common.PdfShareHelper
 import com.authvex.balaxysefactura.ui.screens.reports.DatePreset
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -56,13 +58,19 @@ class AgingReportViewModel(
 
     var clientesList by mutableStateOf<List<ClienteDto>>(emptyList())
 
+    var isGeneratingPdf by mutableStateOf(false)
+        private set
+
+    var pdfError by mutableStateOf<String?>(null)
+        private set
+
     private var clientSearchJob: Job? = null
 
     init {
         loadInitialData()
     }
 
-    private fun getPresetDates(preset: DatePreset): Pair<String, String> {
+    fun getPresetDates(preset: DatePreset): Pair<String, String> {
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val cal = Calendar.getInstance()
         val hasta = sdf.format(cal.time)
@@ -164,6 +172,80 @@ class AgingReportViewModel(
             }.onFailure { throwable ->
                 val appError = ErrorMapper.fromThrowable(throwable)
                 uiState = AgingReportUiState.Error(appError.getDisplayMessage())
+            }
+        }
+    }
+
+    fun viewReportPdf(context: Context) {
+        if (isGeneratingPdf) return
+        val currentSuccess = uiState as? AgingReportUiState.Success ?: return
+        isGeneratingPdf = true
+        pdfError = null
+
+        viewModelScope.launch {
+            try {
+                val companyName = cfeRepository.getEmpresa().getOrNull()?.nombre ?: "Empresa"
+                val dates = getPresetDates(selectedPreset)
+                val clientLabel = selectedCliente?.nombre ?: "Todos"
+
+                val docModel = AgingReportDocumentModel(
+                    companyName = companyName,
+                    fechaDesde = dates.first,
+                    fechaHasta = dates.second,
+                    baseCurrencyCode = companyBaseCurrencyCode,
+                    clientFilterLabel = clientLabel,
+                    state = currentSuccess
+                )
+
+                val pdfRes = AgingReportPdfGenerator.generate(context, docModel)
+                pdfRes.onSuccess { pdfFile ->
+                    PdfShareHelper.openPdf(context, pdfFile, title = "Antiguedad de Deuda")
+                }.onFailure { err ->
+                    val appErr = ErrorMapper.fromThrowable(err)
+                    pdfError = appErr.getDisplayMessage()
+                }
+            } finally {
+                isGeneratingPdf = false
+            }
+        }
+    }
+
+    fun shareReportPdf(context: Context) {
+        if (isGeneratingPdf) return
+        val currentSuccess = uiState as? AgingReportUiState.Success ?: return
+        isGeneratingPdf = true
+        pdfError = null
+
+        viewModelScope.launch {
+            try {
+                val companyName = cfeRepository.getEmpresa().getOrNull()?.nombre ?: "Empresa"
+                val dates = getPresetDates(selectedPreset)
+                val clientLabel = selectedCliente?.nombre ?: "Todos"
+
+                val docModel = AgingReportDocumentModel(
+                    companyName = companyName,
+                    fechaDesde = dates.first,
+                    fechaHasta = dates.second,
+                    baseCurrencyCode = companyBaseCurrencyCode,
+                    clientFilterLabel = clientLabel,
+                    state = currentSuccess
+                )
+
+                val pdfRes = AgingReportPdfGenerator.generate(context, docModel)
+                pdfRes.onSuccess { pdfFile ->
+                    PdfShareHelper.sharePdf(
+                        context = context,
+                        pdfFile = pdfFile,
+                        subject = "Antigüedad de Deuda (${dates.first} - ${dates.second})",
+                        text = "Adjunto informe Antigüedad de Deuda",
+                        chooserTitle = "Compartir Antigüedad de Deuda"
+                    )
+                }.onFailure { err ->
+                    val appErr = ErrorMapper.fromThrowable(err)
+                    pdfError = appErr.getDisplayMessage()
+                }
+            } finally {
+                isGeneratingPdf = false
             }
         }
     }
