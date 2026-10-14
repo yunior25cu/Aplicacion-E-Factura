@@ -9,4 +9,7 @@
     <cache-path
         name="cobros"
         path="cobros/" />
+    <cache-path
+        name="reportes"
+        path="reportes/" />
 </paths>

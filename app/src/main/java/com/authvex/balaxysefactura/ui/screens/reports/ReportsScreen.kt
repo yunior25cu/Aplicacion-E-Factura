@@ -30,7 +30,10 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import com.authvex.balaxysefactura.core.network.*
+import com.authvex.balaxysefactura.core.repository.CfeRepository
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -39,14 +42,22 @@ import java.util.*
 fun ReportsScreen(
     viewModel: ReportsViewModel,
     onBack: () -> Unit,
+    cfeRepository: CfeRepository? = null,
     onNavigateToReceivablesReport: () -> Unit = {},
     onNavigateToAgingReport: () -> Unit = {},
     onNavigateToCollectedReport: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     var categoryTab by remember { mutableIntStateOf(0) }
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf("Resumen", "Serie", "Clientes", "Productos", "Docs")
     var showDatePicker by remember { mutableStateOf(false) }
+
+    LaunchedEffect(viewModel.pdfError) {
+        viewModel.pdfError?.let { err ->
+            Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -59,6 +70,18 @@ fun ReportsScreen(
                 },
                 actions = {
                     if (categoryTab == 0) {
+                        IconButton(
+                            onClick = { viewModel.viewSalesReportPdf(context, cfeRepository) },
+                            enabled = !viewModel.isGeneratingPdf
+                        ) {
+                            Icon(Icons.Default.Visibility, contentDescription = "Ver informe")
+                        }
+                        IconButton(
+                            onClick = { viewModel.shareSalesReportPdf(context, cfeRepository) },
+                            enabled = !viewModel.isGeneratingPdf
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = "Compartir informe")
+                        }
                         IconButton(onClick = { showDatePicker = true }) {
                             Icon(Icons.Default.CalendarMonth, contentDescription = "Filtrar Fechas")
                         }
@@ -75,6 +98,9 @@ fun ReportsScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
+            if (viewModel.isGeneratingPdf) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
             
             TabRow(
                 selectedTabIndex = categoryTab,

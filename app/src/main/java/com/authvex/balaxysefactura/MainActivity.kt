@@ -392,6 +392,7 @@ class MainActivity : ComponentActivity() {
                         ReportsScreen(
                             viewModel = reportsViewModel,
                             onBack = { navController.popBackStack() },
+                            cfeRepository = cfeRepository,
                             onNavigateToReceivablesReport = { navController.navigate(Screen.ReceivablesReport.route) },
                             onNavigateToAgingReport = { navController.navigate(Screen.AgingReport.route) },
                             onNavigateToCollectedReport = { navController.navigate(Screen.CollectedReport.route) }
