@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.authvex.balaxysefactura.core.network.*
 import com.authvex.balaxysefactura.core.repository.CfeRepository
 import com.authvex.balaxysefactura.core.repository.CollectionRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -20,7 +21,8 @@ data class PendingInvoiceItem(
     val pendingBase: Double,
     val pendingOriginal: Double,
     var montoCobrarText: String = "0.0",
-    var isSelected: Boolean = false
+    var isSelected: Boolean = false,
+    var fiscalReference: String? = null
 ) {
     fun getPendingDisplay(currencyCode: String): Double {
         return if (currencyCode != "UYU" && pendingOriginal > 0) pendingOriginal else pendingBase
@@ -156,6 +158,7 @@ class CollectionFormViewModel(
                 pendingItem.isSelected = true
                 pendingInvoices.clear()
                 pendingInvoices.add(pendingItem)
+                resolveFiscalReferencesForPendingInvoices()
             }
         }
     }
@@ -180,6 +183,32 @@ class CollectionFormViewModel(
                 val items = response.items.mapNotNull { createPendingInvoiceItem(it) }
                 pendingInvoices.clear()
                 pendingInvoices.addAll(items)
+                resolveFiscalReferencesForPendingInvoices()
+            }
+        }
+    }
+
+    fun resolveFiscalReferencesForPendingInvoices() {
+        val uniqueDocIds = pendingInvoices.map { it.factura.id }.filter { it > 0 }.distinct()
+        if (uniqueDocIds.isEmpty()) return
+
+        viewModelScope.launch {
+            uniqueDocIds.forEach { docId ->
+                try {
+                    val cfeRes = cfeRepository.getDocumentDetail(docId.toInt())
+                    if (cfeRes.isSuccess) {
+                        val detail = cfeRes.getOrNull()
+                        if (detail != null && !detail.serie.isNullOrBlank() && detail.numero != null && detail.numero > 0) {
+                            val cfeRef = "${detail.serie}-${detail.numero}"
+                            val idx = pendingInvoices.indexOfFirst { it.factura.id == docId }
+                            if (idx >= 0) {
+                                pendingInvoices[idx] = pendingInvoices[idx].copy(fiscalReference = cfeRef)
+                            }
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Best-effort fallback
+                }
             }
         }
     }

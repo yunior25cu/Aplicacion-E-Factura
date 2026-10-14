@@ -72,6 +72,44 @@ class CollectionContractTest {
     }
 
     @Test
+    fun `COLLECTION_PENDING_INVOICE_RESOLVES_CFE_FISCAL_REFERENCE_DEDUPLICATED`() = runTest {
+        val invoice = CollectionInvoiceDto(id = 76L, folio = "FA-76/01/2026", importeTotalBase = 1000.0)
+
+        whenever(collectionRepository.getCollectableInvoices(10L))
+            .thenReturn(Result.success(CollectionInvoiceListResponse(totalRecords = 1, items = listOf(invoice))))
+
+        val cfeDetail = CfeDetailDto(documentoId = 76, serie = "A", numero = 20002L, cfeCode = 111)
+        whenever(cfeRepository.getDocumentDetail(76)).thenReturn(Result.success(cfeDetail))
+
+        val viewModel = CollectionFormViewModel(collectionRepository, cfeRepository)
+        viewModel.onClientSelected(ClienteDto(10, "ABITAB S A"))
+
+        assertEquals(1, viewModel.pendingInvoices.size)
+        val item = viewModel.pendingInvoices.first()
+        assertEquals("A-20002", item.fiscalReference)
+
+        // Verify lookup deduplicated
+        verify(cfeRepository, times(1)).getDocumentDetail(76)
+    }
+
+    @Test
+    fun `COLLECTION_PENDING_INVOICE_CFE_FAILURE_FALLS_BACK_TO_INTERNAL_FOLIO`() = runTest {
+        val invoice = CollectionInvoiceDto(id = 88L, folio = "FA-88/01/2026", importeTotalBase = 1000.0)
+
+        whenever(collectionRepository.getCollectableInvoices(10L))
+            .thenReturn(Result.success(CollectionInvoiceListResponse(totalRecords = 1, items = listOf(invoice))))
+
+        whenever(cfeRepository.getDocumentDetail(88)).thenReturn(Result.failure(Exception("CFE not found")))
+
+        val viewModel = CollectionFormViewModel(collectionRepository, cfeRepository)
+        viewModel.onClientSelected(ClienteDto(10, "ABITAB S A"))
+
+        assertEquals(1, viewModel.pendingInvoices.size)
+        val item = viewModel.pendingInvoices.first()
+        assertNull(item.fiscalReference) // null triggers fallback display to FA-88/01/2026
+    }
+
+    @Test
     fun `COLLECTION_AMOUNT_VALIDATIONS_ZERO_NEGATIVE_OVER_BALANCE_PARTIAL_FULL`() {
         val invoice = CollectionInvoiceDto(id = 100L, importeTotalBase = 1000.0)
         val itemZero = PendingInvoiceItem(factura = invoice, pendingBase = 1000.0, pendingOriginal = 0.0, montoCobrarText = "0.0", isSelected = true)
@@ -613,7 +651,7 @@ class CollectionContractTest {
         viewModel.selectedFormaPago = CatalogoItemDto(1, "Efectivo")
         viewModel.selectedMoneda = TasaCambioSimpleDto(50, "UYU", "Pesos", "$", 2, 1.0)
         viewModel.pendingInvoices.add(
-            com.authvex.balaxysefactura.ui.screens.collection.form.PendingInvoiceItem(
+            PendingInvoiceItem(
                 factura = CollectionInvoiceDto(id = 500L),
                 pendingBase = 100.0,
                 pendingOriginal = 0.0,

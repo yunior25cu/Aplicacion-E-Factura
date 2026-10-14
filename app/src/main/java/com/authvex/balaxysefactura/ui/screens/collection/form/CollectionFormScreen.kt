@@ -193,7 +193,7 @@ fun CollectionFormScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                             Checkbox(
                                                 checked = item.isSelected,
                                                 onCheckedChange = { checked ->
@@ -205,11 +205,24 @@ fun CollectionFormScreen(
                                             )
                                             Icon(Icons.Default.Receipt, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = item.factura.folio ?: "Factura N° ${item.factura.numero ?: item.factura.id}",
-                                                style = MaterialTheme.typography.titleSmall,
-                                                fontWeight = FontWeight.Bold
-                                            )
+
+                                            val primaryLabel = if (!item.fiscalReference.isNullOrBlank()) "CFE ${item.fiscalReference}" else (item.factura.folio ?: "Factura N° ${item.factura.numero ?: item.factura.id}")
+                                            val internalFolio = item.factura.folio ?: "FA-${item.factura.numero ?: item.factura.id}"
+
+                                            Column {
+                                                Text(
+                                                    text = primaryLabel,
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                if (!item.fiscalReference.isNullOrBlank()) {
+                                                    Text(
+                                                        text = "Factura ERP · $internalFolio",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                                    )
+                                                }
+                                            }
                                         }
                                         Text(
                                             text = item.factura.fechaEmision.take(10),

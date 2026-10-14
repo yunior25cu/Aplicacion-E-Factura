@@ -49,6 +49,9 @@ class CollectionDetailViewModel(
     var baseCurrencyId by mutableStateOf<Int?>(null)
         private set
 
+    var appliedCfeMap by mutableStateOf<Map<Long, String>>(emptyMap())
+        private set
+
     init {
         loadDetail()
     }
@@ -65,6 +68,7 @@ class CollectionDetailViewModel(
                         uiState = CollectionDetailUiState.Success(collection)
                         val empresaRes = repository.getEmpresa().getOrNull()
                         baseCurrencyId = empresaRes?.moneda?.id ?: 50
+                        resolveCfeReferencesForDetail(collection)
                         return@launch
                     }
                 }
@@ -77,10 +81,29 @@ class CollectionDetailViewModel(
                 uiState = CollectionDetailUiState.Error(appErr.getDisplayMessage())
                 return@launch
             }
+        }
+    }
 
-            val doc = detailResult.getOrThrow()
-            val empresaRes = repository.getEmpresa().getOrNull()
-            baseCurrencyId = empresaRes?.moneda?.id ?: 50
+    fun resolveCfeReferencesForDetail(collection: CobroDetailDto) {
+        val uniqueDocIds = collection.facturaCobros.map { it.factura.id }.filter { it > 0 }.distinct()
+        if (uniqueDocIds.isEmpty()) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val map = mutableMapOf<Long, String>()
+            uniqueDocIds.forEach { docId ->
+                try {
+                    val cfeRes = repository.getDocumentDetail(docId.toInt())
+                    if (cfeRes.isSuccess) {
+                        val detail = cfeRes.getOrNull()
+                        if (detail != null && !detail.serie.isNullOrBlank() && detail.numero != null && detail.numero > 0) {
+                            map[docId] = "${detail.serie}-${detail.numero}"
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Fallback
+                }
+            }
+            appliedCfeMap = map
         }
     }
 
@@ -103,17 +126,6 @@ class CollectionDetailViewModel(
             } finally {
                 isConfirming = false
             }
-        }
-    }
-
-    private fun formatDateDisplay(dateStr: String?): String {
-        if (dateStr.isNullOrBlank()) return ""
-        val clean = dateStr.take(10)
-        val parts = clean.split("-")
-        return if (parts.size == 3) {
-            "${parts[2]}/${parts[1]}/${parts[0]}"
-        } else {
-            clean
         }
     }
 
@@ -157,6 +169,17 @@ class CollectionDetailViewModel(
                 fecha = formattedDate,
                 amount = amount
             )
+        }
+    }
+
+    private fun formatDateDisplay(dateStr: String?): String {
+        if (dateStr.isNullOrBlank()) return ""
+        val clean = dateStr.take(10)
+        val parts = clean.split("-")
+        return if (parts.size == 3) {
+            "${parts[2]}/${parts[1]}/${parts[0]}"
+        } else {
+            clean
         }
     }
 

@@ -271,6 +271,11 @@ fun CollectionDetailScreen(
                                     HorizontalDivider()
 
                                     collection.facturaCobros.forEach { fc ->
+                                        val docId = fc.factura.id
+                                        val cfeRef = viewModel.appliedCfeMap[docId]
+                                        val internalFolio = fc.factura.folio ?: "Factura N° ${fc.factura.id}"
+                                        val primaryText = if (!cfeRef.isNullOrBlank()) "CFE $cfeRef" else internalFolio
+
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -279,11 +284,20 @@ fun CollectionDetailScreen(
                                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                                 Icon(Icons.Default.Receipt, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                                                 Spacer(modifier = Modifier.width(8.dp))
-                                                Text(
-                                                    text = fc.factura.folio ?: "Factura N° ${fc.factura.id}",
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    fontWeight = FontWeight.Medium
-                                                )
+                                                Column {
+                                                    Text(
+                                                        text = primaryText,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                    if (!cfeRef.isNullOrBlank()) {
+                                                        Text(
+                                                            text = "Factura ERP · $internalFolio",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                                        )
+                                                    }
+                                                }
                                             }
                                             val amount = if (fc.montoOriginal > 0) fc.montoOriginal else fc.montoBase
                                             val symbol = collection.moneda?.codigo ?: "UYU"
