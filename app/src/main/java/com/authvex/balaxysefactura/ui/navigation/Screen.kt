@@ -34,4 +34,5 @@ sealed class Screen(val route: String) {
     }
     object ScanInbox : Screen("scan_inbox")
     object ClientCreate : Screen("client_create")
+    object ProductCreate : Screen("product_create")
 }

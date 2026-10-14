@@ -35,7 +35,8 @@ fun EmissionScreen(
     viewModel: EmissionViewModel, 
     onBack: () -> Unit,
     onNavigateToDetail: (Long) -> Unit,
-    onOpenCreateClient: () -> Unit = {}
+    onOpenCreateClient: () -> Unit = {},
+    onOpenCreateProduct: () -> Unit = {}
 ) {
     val state = viewModel.uiState
 
@@ -69,7 +70,13 @@ fun EmissionScreen(
                     TypeSelectionView(state.types, onSelect = { viewModel.selectFiscalType(it) })
                 }
                 is EmissionUiState.FillForm -> {
-                    EmissionFormView(viewModel, state.type, state.pos, onOpenCreateClient = onOpenCreateClient)
+                    EmissionFormView(
+                        viewModel = viewModel,
+                        type = state.type,
+                        pos = state.pos,
+                        onOpenCreateClient = onOpenCreateClient,
+                        onOpenCreateProduct = onOpenCreateProduct
+                    )
                 }
                 is EmissionUiState.Processing -> {
                     ProcessingState(state.message, modifier = Modifier.align(Alignment.Center))
@@ -137,7 +144,8 @@ fun EmissionFormView(
     viewModel: EmissionViewModel,
     type: CfeFiscalDocumentAvailabilityItemDto,
     pos: PuntoVentaDto,
-    onOpenCreateClient: () -> Unit = {}
+    onOpenCreateClient: () -> Unit = {},
+    onOpenCreateProduct: () -> Unit = {}
 ) {
     val catalogs = viewModel.cachedCatalogs ?: return
 
@@ -447,7 +455,7 @@ fun EmissionFormView(
     }
 
     if (viewModel.isConfiguringLine && viewModel.editingLineIndex == null) {
-        ProductSearchAndConfigDialog(viewModel)
+        ProductSearchAndConfigDialog(viewModel, onOpenCreateProduct)
     }
 
     if (viewModel.editingLineIndex != null && viewModel.productBeingConfigured != null) {
@@ -735,7 +743,7 @@ fun ListItemContent(headline: String, supporting: String? = null, trailing: @Com
 }
 
 @Composable
-fun ProductSearchAndConfigDialog(viewModel: EmissionViewModel) {
+fun ProductSearchAndConfigDialog(viewModel: EmissionViewModel, onOpenCreateProduct: () -> Unit = {}) {
     if (viewModel.productBeingConfigured == null) {
         LaunchedEffect(Unit) {
             viewModel.initProductSearch()
@@ -745,7 +753,11 @@ fun ProductSearchAndConfigDialog(viewModel: EmissionViewModel) {
             isSearching = viewModel.isSearching,
             onSearch = { viewModel.searchProducts(it) },
             onSelect = { p -> viewModel.startLineConfiguration(p) },
-            onDismiss = { viewModel.cancelLineConfiguration() }
+            onDismiss = { viewModel.cancelLineConfiguration() },
+            onCreateNewProduct = {
+                viewModel.cancelLineConfiguration()
+                onOpenCreateProduct()
+            }
         )
     } else {
         val prod = viewModel.productBeingConfigured!!

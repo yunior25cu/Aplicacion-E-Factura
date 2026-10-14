@@ -111,12 +111,26 @@ fun SharedProductSelectDialog(
     isSearching: Boolean,
     onSearch: (String) -> Unit,
     onSelect: (ProductoDto) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onCreateNewProduct: (() -> Unit)? = null
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Card(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f)) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Seleccionar Producto", style = MaterialTheme.typography.titleLarge)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Seleccionar Producto", style = MaterialTheme.typography.titleLarge)
+                    if (onCreateNewProduct != null) {
+                        TextButton(onClick = onCreateNewProduct) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Nuevo", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 var query by remember { mutableStateOf("") }
                 OutlinedTextField(

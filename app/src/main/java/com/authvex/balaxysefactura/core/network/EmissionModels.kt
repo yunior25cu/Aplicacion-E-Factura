@@ -51,8 +51,20 @@ data class CatalogoItemDto(
     val id: Int = 0,
     @SerialName("denominacion")
     val nombre: String = "",
-    val codigo: String? = null
-)
+    val codigo: String? = null,
+    val importe: Double? = null
+) {
+    fun getTaxLabel(): String {
+        val imp = importe
+        return if (imp != null) {
+            val pct = imp * 100.0
+            val pctStr = if (pct % 1.0 == 0.0) String.format(java.util.Locale.US, "%.0f", pct) else String.format(java.util.Locale.US, "%.2f", pct)
+            "IVA $pctStr%"
+        } else {
+            nombre
+        }
+    }
+}
 
 @Serializable
 data class TasaCambioSimpleDto(
@@ -73,13 +85,19 @@ data class EmpresaContactoDto(
 )
 
 @Serializable
+data class EmpresaConfigDto(
+    val idInventarioTipoCuenta: Long? = null
+)
+
+@Serializable
 data class EmpresaDto(
     val id: Int,
     @SerialName("nombre")
     val nombre: String = "",
     val logo: String? = null,
     val contacto: EmpresaContactoDto? = null,
-    val moneda: CatalogoItemDto? = null
+    val moneda: CatalogoItemDto? = null,
+    val empresaConfig: EmpresaConfigDto? = null
 )
 
 enum class CondicionPagoComercial(val apiValue: Int) {

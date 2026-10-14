@@ -20,7 +20,9 @@ import com.authvex.balaxysefactura.core.network.BudgetApi
 import com.authvex.balaxysefactura.core.network.CfeApi
 import com.authvex.balaxysefactura.core.network.ClientApi
 import com.authvex.balaxysefactura.core.network.CollectionApi
+import com.authvex.balaxysefactura.core.network.ProductApi
 import com.authvex.balaxysefactura.core.network.CollectionReportApi
+import com.authvex.balaxysefactura.core.network.ProductoDto
 import com.authvex.balaxysefactura.core.network.ReportsApi
 import com.authvex.balaxysefactura.core.network.RetrofitClient
 import com.authvex.balaxysefactura.core.network.ScanApi
@@ -29,11 +31,14 @@ import com.authvex.balaxysefactura.core.repository.CfeRepository
 import com.authvex.balaxysefactura.core.repository.ClientRepository
 import com.authvex.balaxysefactura.core.repository.CollectionReportRepository
 import com.authvex.balaxysefactura.core.repository.CollectionRepository
+import com.authvex.balaxysefactura.core.repository.ProductRepository
 import com.authvex.balaxysefactura.core.repository.ReportsRepository
 import com.authvex.balaxysefactura.core.repository.ScanRepository
 import com.authvex.balaxysefactura.ui.navigation.Screen
 import com.authvex.balaxysefactura.ui.screens.client.ClientCreateScreen
 import com.authvex.balaxysefactura.ui.screens.client.ClientCreateViewModel
+import com.authvex.balaxysefactura.ui.screens.product.ProductCreateScreen
+import com.authvex.balaxysefactura.ui.screens.product.ProductCreateViewModel
 import com.authvex.balaxysefactura.ui.screens.scan.ScanScreen
 import com.authvex.balaxysefactura.ui.screens.scan.ScanStatusScreen
 import com.authvex.balaxysefactura.ui.screens.scan.ScanStatusViewModel
@@ -89,6 +94,7 @@ class MainActivity : ComponentActivity() {
         val collectionReportApi = retrofitClient.create(CollectionReportApi::class.java)
         val scanApi = retrofitClient.create(ScanApi::class.java)
         val clientApi = retrofitClient.create(ClientApi::class.java)
+        val productApi = retrofitClient.create(ProductApi::class.java)
 
         val cfeRepository = CfeRepository(cfeApi)
         val reportsRepository = ReportsRepository(reportsApi)
@@ -97,6 +103,7 @@ class MainActivity : ComponentActivity() {
         val collectionReportRepository = CollectionReportRepository(collectionReportApi, collectionApi)
         val scanRepository = ScanRepository(scanApi)
         val clientRepository = ClientRepository(clientApi)
+        val productRepository = ProductRepository(productApi)
 
         val startDestination = runBlocking {
             if (authPreferences.getAuthTokenSync() != null) Screen.Home.route else Screen.Login.route
@@ -343,7 +350,7 @@ class MainActivity : ComponentActivity() {
                             onOpenCreateClient = { navController.navigate(Screen.ClientCreate.route) }
                         )
                     }
-                    composable(Screen.Emission.route) {
+                    composable(Screen.Emission.route) { backStackEntry ->
                         val factory = object : ViewModelProvider.Factory {
                             @Suppress("UNCHECKED_CAST")
                             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -351,6 +358,17 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         val emissionViewModel: EmissionViewModel = viewModel(factory = factory)
+
+                        val createdProdId = backStackEntry.savedStateHandle.get<Int>("created_product_id")
+                        LaunchedEffect(createdProdId) {
+                            if (createdProdId != null && createdProdId > 0) {
+                                backStackEntry.savedStateHandle.remove<Int>("created_product_id")
+                                productRepository.getProductById(createdProdId.toLong()).onSuccess { product ->
+                                    emissionViewModel.startLineConfiguration(product)
+                                }
+                            }
+                        }
+
                         EmissionScreen(
                             viewModel = emissionViewModel,
                             onBack = { navController.popBackStack() },
@@ -359,7 +377,8 @@ class MainActivity : ComponentActivity() {
                                     popUpTo(Screen.Home.route)
                                 }
                             },
-                            onOpenCreateClient = { navController.navigate(Screen.ClientCreate.route) }
+                            onOpenCreateClient = { navController.navigate(Screen.ClientCreate.route) },
+                            onOpenCreateProduct = { navController.navigate(Screen.ProductCreate.route) }
                         )
                     }
                     composable(Screen.Reports.route) {
@@ -489,6 +508,25 @@ class MainActivity : ComponentActivity() {
                             viewModel = clientViewModel,
                             onNavigateBack = { navController.popBackStack() },
                             onClientCreated = { _, _ ->
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+                    composable(Screen.ProductCreate.route) {
+                        val factory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return ProductCreateViewModel(productRepository, cfeRepository) as T
+                            }
+                        }
+                        val productViewModel: ProductCreateViewModel = viewModel(factory = factory)
+                        ProductCreateScreen(
+                            viewModel = productViewModel,
+                            onNavigateBack = { navController.popBackStack() },
+                            onProductCreated = { createdProduct ->
+                                navController.previousBackStackEntry
+                                    ?.savedStateHandle
+                                    ?.set("created_product_id", createdProduct.id)
                                 navController.popBackStack()
                             }
                         )
