@@ -258,6 +258,20 @@ open class CfeRepository(private val api: CfeApi) {
         }
     }
 
+    open suspend fun getProductoExistencia(
+        idProducto: Long,
+        idAlmacen: Long,
+        fecha: String? = null,
+        idSkuVariante: Long? = null
+    ): Result<ProductoExistenciaDto> {
+        return try {
+            val res = api.getProductoExistencia(idProducto, idAlmacen, fecha, idSkuVariante)
+            Result.success(res)
+        } catch (e: Exception) {
+            Result.failure(ErrorMapper.fromThrowable(e))
+        }
+    }
+
     open suspend fun getIndicadorSugerido(cfeCode: Int, tasaIva: Double, currentValue: Int?, puntoVentaId: Int, seriePreferida: String?, fechaEmision: String): Result<CfeFiscalIndicadorSugeridoDto> {
         return try {
             Result.success(api.getIndicadorSugerido(cfeCode, tasaIva, currentValue, puntoVentaId, seriePreferida, fechaEmision))

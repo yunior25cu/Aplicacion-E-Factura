@@ -32,6 +32,14 @@ interface CfeApi {
     @GET("Producto")
     suspend fun getProductos(@Query("query") query: String? = null, @Query("limit") limit: Int = 20): PagedResponse<ProductoDto>
 
+    @GET("Producto/existencia")
+    suspend fun getProductoExistencia(
+        @Query("Id") idProducto: Long,
+        @Query("IdAlmacen") idAlmacen: Long,
+        @Query("Fecha") fecha: String? = null,
+        @Query("IdSkuVariante") idSkuVariante: Long? = null
+    ): ProductoExistenciaDto
+
     // --- Catálogos de Lista Simple ---
     @GET("Catalogo/Monedas")
     suspend fun getMonedas(): List<CatalogoItemDto>

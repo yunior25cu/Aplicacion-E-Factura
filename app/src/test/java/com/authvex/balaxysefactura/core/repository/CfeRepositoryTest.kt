@@ -83,6 +83,9 @@ class CfeRepositoryTest {
             
         override suspend fun getIndicadorSugerido(cfeCode: Int, tasaIva: Double, currentValue: Int?, puntoVentaId: Int, seriePreferida: String?, fechaEmision: String): CfeFiscalIndicadorSugeridoDto = 
             shouldThrow?.let { throw it } ?: CfeFiscalIndicadorSugeridoDto(null, null, false, "N/A")
+
+        override suspend fun getProductoExistencia(idProducto: Long, idAlmacen: Long, fecha: String?, idSkuVariante: Long?): ProductoExistenciaDto =
+            shouldThrow?.let { throw it } ?: ProductoExistenciaDto(existencia = 100.0)
     }
 
     @Test

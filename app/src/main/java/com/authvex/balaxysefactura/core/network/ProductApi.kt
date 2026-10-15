@@ -10,6 +10,14 @@ interface ProductApi {
     @GET("Producto/{id}")
     suspend fun getProductById(@Path("id") idProducto: Long): ProductoDto
 
+    @GET("Producto/existencia")
+    suspend fun getProductoExistencia(
+        @Query("Id") idProducto: Long,
+        @Query("IdAlmacen") idAlmacen: Long,
+        @Query("Fecha") fecha: String? = null,
+        @Query("IdSkuVariante") idSkuVariante: Long? = null
+    ): ProductoExistenciaDto
+
     @GET("Catalogo/UnidadMedidas")
     suspend fun getUnidadesMedida(): List<CatalogoItemDto>
 

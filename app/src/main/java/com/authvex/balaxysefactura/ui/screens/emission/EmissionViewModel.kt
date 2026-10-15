@@ -98,6 +98,13 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
     var lineConfigurationSugerido by mutableStateOf<CfeFiscalIndicadorSugeridoDto?>(null)
     var isResolvingC4 by mutableStateOf(false)
 
+    var lineStockLoading by mutableStateOf(false)
+        private set
+    var lineStockExistence by mutableStateOf<Double?>(null)
+        private set
+    var lineStockError by mutableStateOf(false)
+        private set
+
     var cachedCatalogs: CatalogData? = null
         private set
 
@@ -417,6 +424,32 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
         }
     }
 
+    fun loadProductStockForLineConfiguration(producto: ProductoDto) {
+        lineStockLoading = false
+        lineStockExistence = null
+        lineStockError = false
+
+        val almacen = selectedAlmacen
+        if (producto.esServicio || almacen == null) return
+
+        lineStockLoading = true
+        viewModelScope.launch {
+            repository.getProductoExistencia(
+                idProducto = producto.id.toLong(),
+                idAlmacen = almacen.id.toLong(),
+                fecha = fechaConfirmacion,
+                idSkuVariante = null
+            ).onSuccess { dto ->
+                @Suppress("UNNECESSARY_SAFE_CALL")
+                lineStockExistence = dto?.existencia
+                lineStockLoading = false
+            }.onFailure {
+                lineStockError = true
+                lineStockLoading = false
+            }
+        }
+    }
+
     fun startLineConfiguration(producto: ProductoDto) {
         val type = selectedFiscalType ?: return
         val pos = selectedPOS ?: return
@@ -428,6 +461,8 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
         lineDialogError = null
         isResolvingC4 = true
         isConfiguringLine = true
+
+        loadProductStockForLineConfiguration(producto)
 
         viewModelScope.launch {
             repository.getIndicadorSugerido(
@@ -455,6 +490,7 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             dialogUnitPriceText = item.precioUnitario.toString()
             lineDialogError = null
             isConfiguringLine = true
+            loadProductStockForLineConfiguration(item.producto)
         }
     }
 

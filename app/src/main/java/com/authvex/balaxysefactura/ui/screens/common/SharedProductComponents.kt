@@ -196,6 +196,9 @@ fun SharedLineConfiguratorDialog(
     indicadoresC4: List<CfeFiscalIndicadorFacturacionDto> = emptyList(),
     initialC4: Int? = null,
     isResolvingC4: Boolean = false,
+    stockLoading: Boolean = false,
+    stockExistence: Double? = null,
+    stockError: Boolean = false,
     errorMessage: String? = null,
     onConfirm: (quantity: Double, price: Double, indicadorC4: Int?) -> Unit,
     onDismiss: () -> Unit
@@ -217,6 +220,33 @@ fun SharedLineConfiguratorDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                if (stockLoading) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Consultando existencia...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else if (stockExistence != null) {
+                    val formattedStock = if (stockExistence % 1.0 == 0.0) String.format(Locale.US, "%.0f", stockExistence) else String.format(Locale.US, "%.2f", stockExistence)
+                    val stockColor = if (stockExistence <= 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                    Text(
+                        text = "Existencia en almacén: $formattedStock",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = stockColor
+                    )
+                } else if (stockError) {
+                    Text(
+                        text = "Existencia no disponible",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
 
                 OutlinedTextField(
                     value = price,

@@ -52,3 +52,12 @@ data class ProductCreateRequest(
     @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     val activaVariantes: Boolean = false
 )
+
+@Serializable
+data class ProductoExistenciaDto(
+    val existencia: Double = 0.0,
+    val pendienteEntrada: Double? = null,
+    val pendienteSalida: Double? = null,
+    val costo: Double? = null,
+    val disponibles: Double? = null
+)

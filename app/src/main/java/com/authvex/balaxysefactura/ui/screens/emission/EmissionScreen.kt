@@ -468,6 +468,9 @@ fun EmissionFormView(
             indicadoresC4 = viewModel.cachedCatalogs?.indicadoresC4 ?: emptyList(),
             initialC4 = viewModel.lineas.getOrNull(viewModel.editingLineIndex!!)?.indicadorFacturacionC4,
             isResolvingC4 = viewModel.isResolvingC4,
+            stockLoading = viewModel.lineStockLoading,
+            stockExistence = viewModel.lineStockExistence,
+            stockError = viewModel.lineStockError,
             errorMessage = viewModel.lineDialogError,
             onConfirm = { qty, price, c4 ->
                 viewModel.confirmLineConfiguration(qty, price, c4)
@@ -769,6 +772,9 @@ fun ProductSearchAndConfigDialog(viewModel: EmissionViewModel, onOpenCreateProdu
             indicadoresC4 = viewModel.cachedCatalogs?.indicadoresC4 ?: emptyList(),
             initialC4 = viewModel.lineConfigurationSugerido?.persistedValue,
             isResolvingC4 = viewModel.isResolvingC4,
+            stockLoading = viewModel.lineStockLoading,
+            stockExistence = viewModel.lineStockExistence,
+            stockError = viewModel.lineStockError,
             errorMessage = viewModel.lineDialogError,
             onConfirm = { qty, price, c4 ->
                 viewModel.confirmLineConfiguration(qty, price, c4)

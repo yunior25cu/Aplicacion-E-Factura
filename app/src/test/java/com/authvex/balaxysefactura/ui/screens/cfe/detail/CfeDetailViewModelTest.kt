@@ -110,4 +110,5 @@ private fun mockApi(): CfeApi = object : CfeApi {
     override suspend fun caePrecheck(puntoVentaId: Int, tipoCfe: Int, serie: String?, fechaEmision: String): CaePrecheckResultDto = throw Exception()
     override suspend fun getIndicadoresFacturacion(cfeCode: Int, puntoVentaId: Int, seriePreferida: String?, fechaEmision: String): List<CfeFiscalIndicadorFacturacionDto> = throw Exception()
     override suspend fun getIndicadorSugerido(cfeCode: Int, tasaIva: Double, currentValue: Int?, puntoVentaId: Int, seriePreferida: String?, fechaEmision: String): CfeFiscalIndicadorSugeridoDto = throw Exception()
+    override suspend fun getProductoExistencia(idProducto: Long, idAlmacen: Long, fecha: String?, idSkuVariante: Long?): ProductoExistenciaDto = throw Exception()
 }
