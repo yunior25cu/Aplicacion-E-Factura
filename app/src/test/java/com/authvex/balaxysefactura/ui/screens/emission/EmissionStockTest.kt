@@ -92,11 +92,13 @@ class EmissionStockTest {
     }
 
     @Test
-    fun `PRODUCT_EXISTENCE_FAILURE_DOES_NOT_BLOCK_LINE_CONFIRM_OR_EMISSION`() = runTest {
+    fun `LINE_STOCK_VALIDATION_USES_EXISTENCIA_NOT_DISPONIBLES`() = runTest {
         val physicalProd = ProductoDto(id = 55, nombre = "Mesa Madera", esServicio = false, precio = 1000.0)
+        // existencia = 10.0, disponibles = 0.0
+        val stockDto = ProductoExistenciaDto(existencia = 10.0, disponibles = 0.0)
 
         whenever(cfeRepository.getProductoExistencia(eq(55L), eq(5L), any(), eq(null)))
-            .thenReturn(Result.failure(Exception("Stock service unavailable")))
+            .thenReturn(Result.success(stockDto))
 
         val viewModel = EmissionViewModel(cfeRepository)
         viewModel.selectedPOS = PuntoVentaDto(1, "PV1", 1, true, true)
@@ -105,19 +107,61 @@ class EmissionStockTest {
 
         viewModel.startLineConfiguration(physicalProd)
 
-        assertTrue(viewModel.lineStockError)
-        assertNull(viewModel.lineStockExistence)
+        // Quantity 5 <= existencia 10 -> ALLOWED even if disponibles == 0
+        val confirmed = viewModel.confirmLineConfiguration(cantidad = 5.0, precio = 1000.0, indicadorC4 = null)
 
-        // Line confirm succeeds despite stock failure
-        viewModel.confirmLineConfiguration(cantidad = 2.0, precio = 1000.0, indicadorC4 = null)
-
+        assertTrue(confirmed)
         assertEquals(1, viewModel.lineas.size)
-        assertEquals(2.0, viewModel.lineas.first().cantidad, 0.001)
-        assertEquals(1000.0, viewModel.lineas.first().precioUnitario, 0.001)
+        assertEquals(5.0, viewModel.lineas.first().cantidad, 0.001)
     }
 
     @Test
-    fun `PRODUCT_EXISTENCE_ZERO_DOES_NOT_BLOCK_LINE_CONFIRM`() = runTest {
+    fun `LINE_STOCK_QUANTITY_EQUAL_EXISTENCIA_ALLOWED`() = runTest {
+        val physicalProd = ProductoDto(id = 55, nombre = "Mesa Madera", esServicio = false, precio = 1000.0)
+        val stockDto = ProductoExistenciaDto(existencia = 10.0)
+
+        whenever(cfeRepository.getProductoExistencia(eq(55L), eq(5L), any(), eq(null)))
+            .thenReturn(Result.success(stockDto))
+
+        val viewModel = EmissionViewModel(cfeRepository)
+        viewModel.selectedPOS = PuntoVentaDto(1, "PV1", 1, true, true)
+        viewModel.selectedFiscalType = CfeFiscalDocumentAvailabilityItemDto(cfeCode = 111, name = "e-Factura", habilitado = true, puntoVentaId = 1, serie = "A")
+        viewModel.selectedAlmacen = CatalogoItemDto(5, "Almacén Central")
+
+        viewModel.startLineConfiguration(physicalProd)
+
+        val confirmed = viewModel.confirmLineConfiguration(cantidad = 10.0, precio = 1000.0, indicadorC4 = null)
+
+        assertTrue(confirmed)
+        assertEquals(1, viewModel.lineas.size)
+        assertEquals(10.0, viewModel.lineas.first().cantidad, 0.001)
+    }
+
+    @Test
+    fun `LINE_STOCK_QUANTITY_ABOVE_EXISTENCIA_BLOCKED`() = runTest {
+        val physicalProd = ProductoDto(id = 55, nombre = "Mesa Madera", esServicio = false, precio = 1000.0)
+        val stockDto = ProductoExistenciaDto(existencia = 10.0)
+
+        whenever(cfeRepository.getProductoExistencia(eq(55L), eq(5L), any(), eq(null)))
+            .thenReturn(Result.success(stockDto))
+
+        val viewModel = EmissionViewModel(cfeRepository)
+        viewModel.selectedPOS = PuntoVentaDto(1, "PV1", 1, true, true)
+        viewModel.selectedFiscalType = CfeFiscalDocumentAvailabilityItemDto(cfeCode = 111, name = "e-Factura", habilitado = true, puntoVentaId = 1, serie = "A")
+        viewModel.selectedAlmacen = CatalogoItemDto(5, "Almacén Central")
+
+        viewModel.startLineConfiguration(physicalProd)
+
+        // Quantity 11 > existencia 10 -> BLOCKED
+        val confirmed = viewModel.confirmLineConfiguration(cantidad = 11.0, precio = 1000.0, indicadorC4 = null)
+
+        assertFalse(confirmed)
+        assertEquals(0, viewModel.lineas.size)
+        assertEquals("La cantidad no puede superar la existencia en almacén.", viewModel.lineDialogError)
+    }
+
+    @Test
+    fun `LINE_STOCK_ZERO_BLOCKS_POSITIVE_QUANTITY`() = runTest {
         val physicalProd = ProductoDto(id = 55, nombre = "Mesa Madera", esServicio = false, precio = 1000.0)
         val stockDto = ProductoExistenciaDto(existencia = 0.0)
 
@@ -131,11 +175,81 @@ class EmissionStockTest {
 
         viewModel.startLineConfiguration(physicalProd)
 
-        assertEquals(0.0, viewModel.lineStockExistence!!, 0.001)
+        // Quantity 1 > existencia 0 -> BLOCKED
+        val confirmed = viewModel.confirmLineConfiguration(cantidad = 1.0, precio = 1000.0, indicadorC4 = null)
 
+        assertFalse(confirmed)
+        assertEquals(0, viewModel.lineas.size)
+        assertEquals("La cantidad no puede superar la existencia en almacén.", viewModel.lineDialogError)
+    }
+
+    @Test
+    fun `LINE_STOCK_SERVICE_IGNORES_EXISTENCIA`() = runTest {
+        val serviceProd = ProductoDto(id = 88, nombre = "Asesoría Legal", esServicio = true, precio = 500.0)
+
+        val viewModel = EmissionViewModel(cfeRepository)
+        viewModel.selectedPOS = PuntoVentaDto(1, "PV1", 1, true, true)
+        viewModel.selectedFiscalType = CfeFiscalDocumentAvailabilityItemDto(cfeCode = 111, name = "e-Factura", habilitado = true, puntoVentaId = 1, serie = "A")
+        viewModel.selectedAlmacen = CatalogoItemDto(5, "Almacén Central")
+
+        viewModel.startLineConfiguration(serviceProd)
+
+        // Quantity 100 for service -> ALLOWED even without stock lookup
+        val confirmed = viewModel.confirmLineConfiguration(cantidad = 100.0, precio = 500.0, indicadorC4 = null)
+
+        assertTrue(confirmed)
+        assertEquals(1, viewModel.lineas.size)
+        assertEquals(100.0, viewModel.lineas.first().cantidad, 0.001)
+    }
+
+    @Test
+    fun `LINE_STOCK_ENDPOINT_ERROR_DOES_NOT_BLOCK_LINE_CONFIRM`() = runTest {
+        val physicalProd = ProductoDto(id = 55, nombre = "Mesa Madera", esServicio = false, precio = 1000.0)
+
+        whenever(cfeRepository.getProductoExistencia(eq(55L), eq(5L), any(), eq(null)))
+            .thenReturn(Result.failure(Exception("Stock service unavailable")))
+
+        val viewModel = EmissionViewModel(cfeRepository)
+        viewModel.selectedPOS = PuntoVentaDto(1, "PV1", 1, true, true)
+        viewModel.selectedFiscalType = CfeFiscalDocumentAvailabilityItemDto(cfeCode = 111, name = "e-Factura", habilitado = true, puntoVentaId = 1, serie = "A")
+        viewModel.selectedAlmacen = CatalogoItemDto(5, "Almacén Central")
+
+        viewModel.startLineConfiguration(physicalProd)
+
+        assertTrue(viewModel.lineStockError)
+
+        // Line confirm succeeds despite stock service failure
+        val confirmed = viewModel.confirmLineConfiguration(cantidad = 2.0, precio = 1000.0, indicadorC4 = null)
+
+        assertTrue(confirmed)
+        assertEquals(1, viewModel.lineas.size)
+    }
+
+    @Test
+    fun `LINE_STOCK_EDIT_ABOVE_EXISTENCE_BLOCKED`() = runTest {
+        val physicalProd = ProductoDto(id = 55, nombre = "Mesa Madera", esServicio = false, precio = 1000.0)
+        val stockDto = ProductoExistenciaDto(existencia = 10.0)
+
+        whenever(cfeRepository.getProductoExistencia(eq(55L), eq(5L), any(), eq(null)))
+            .thenReturn(Result.success(stockDto))
+
+        val viewModel = EmissionViewModel(cfeRepository)
+        viewModel.selectedPOS = PuntoVentaDto(1, "PV1", 1, true, true)
+        viewModel.selectedFiscalType = CfeFiscalDocumentAvailabilityItemDto(cfeCode = 111, name = "e-Factura", habilitado = true, puntoVentaId = 1, serie = "A")
+        viewModel.selectedAlmacen = CatalogoItemDto(5, "Almacén Central")
+
+        // Add line with qty 5
+        viewModel.startLineConfiguration(physicalProd)
         viewModel.confirmLineConfiguration(cantidad = 5.0, precio = 1000.0, indicadorC4 = null)
 
         assertEquals(1, viewModel.lineas.size)
-        assertEquals(5.0, viewModel.lineas.first().cantidad, 0.001)
+
+        // Edit line with qty 12 > existencia 10 -> BLOCKED
+        viewModel.openLineEditDialog(0)
+        val confirmed = viewModel.confirmLineConfiguration(cantidad = 12.0, precio = 1000.0, indicadorC4 = null)
+
+        assertFalse(confirmed)
+        assertEquals(5.0, viewModel.lineas.first().cantidad, 0.001) // Qty remains 5
+        assertEquals("La cantidad no puede superar la existencia en almacén.", viewModel.lineDialogError)
     }
 }

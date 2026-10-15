@@ -494,8 +494,17 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
         }
     }
 
-    fun confirmLineConfiguration(cantidad: Double, precio: Double, indicadorC4: Int?, sugerido: Int? = null, label: String? = null) {
-        val producto = productBeingConfigured ?: return
+    fun confirmLineConfiguration(cantidad: Double, precio: Double, indicadorC4: Int?, sugerido: Int? = null, label: String? = null): Boolean {
+        val producto = productBeingConfigured ?: return false
+
+        if (!producto.esServicio && !lineStockError && lineStockExistence != null) {
+            val stock = lineStockExistence!!
+            if (cantidad > stock + 0.00001) {
+                lineDialogError = "La cantidad no puede superar la existencia en almacén."
+                return false
+            }
+        }
+
         val editIdx = editingLineIndex
         if (editIdx != null && editIdx in lineas.indices) {
             val currentItem = lineas[editIdx]
@@ -515,6 +524,7 @@ class EmissionViewModel(private val repository: CfeRepository) : ViewModel() {
             ))
         }
         cancelLineConfiguration()
+        return true
     }
 
     fun confirmLineEdit(quantityStr: String, priceStr: String): Boolean {

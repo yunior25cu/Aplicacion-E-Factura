@@ -260,6 +260,8 @@ fun SharedLineConfiguratorDialog(
                 val qtyNum = qty.replace(',', '.').toDoubleOrNull() ?: 0.0
                 val priceNum = price.replace(',', '.').toDoubleOrNull() ?: 0.0
                 val totalPreview = qtyNum * priceNum
+                val isOverStock = !stockError && stockExistence != null && qtyNum > stockExistence + 0.00001
+                val effectiveError = if (isOverStock) "La cantidad no puede superar la existencia en almacén." else errorMessage
 
                 Text(
                     text = "Subtotal Estimado: $currencySymbol ${String.format(Locale.US, "%.2f", totalPreview)}",
@@ -282,9 +284,9 @@ fun SharedLineConfiguratorDialog(
                     )
                 }
 
-                if (!errorMessage.isNullOrBlank()) {
+                if (!effectiveError.isNullOrBlank()) {
                     Text(
-                        text = errorMessage,
+                        text = effectiveError,
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -300,9 +302,12 @@ fun SharedLineConfiguratorDialog(
                         Text("Cancelar")
                     }
                     Spacer(modifier = Modifier.width(8.dp))
-                    Button(onClick = {
-                        onConfirm(qty.replace(',', '.').toDoubleOrNull() ?: 0.0, price.replace(',', '.').toDoubleOrNull() ?: 0.0, selectedC4)
-                    }) {
+                    Button(
+                        onClick = {
+                            onConfirm(qtyNum, priceNum, selectedC4)
+                        },
+                        enabled = !stockLoading && !isOverStock
+                    ) {
                         Text("Confirmar")
                     }
                 }
