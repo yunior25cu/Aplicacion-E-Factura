@@ -117,4 +117,46 @@ class AiAssistantRepositoryTest {
 
         assertFalse(canUse)
     }
+
+    @Test
+    fun `sendFeedback truncates comment to 500 chars, sends null when blank, and maps errors`() = runTest {
+        whenever(aiAssistantApi.feedback(any())).thenReturn(AiFeedbackResponse(ok = true))
+        val repo = AiAssistantRepository(aiAssistantApi, accessApi, enabled = true)
+
+        // 1. Long comment (> 500 chars) is trimmed and truncated to 500 chars
+        val longComment = "   " + "x".repeat(600) + "   "
+        val res1 = repo.sendFeedback(requestId = "r-1", positive = false, comment = longComment)
+        assertTrue(res1.isSuccess)
+        verify(aiAssistantApi).feedback(
+            AiFeedbackRequest(
+                requestId = "r-1",
+                rating = "negative",
+                comment = "x".repeat(500)
+            )
+        )
+
+        // 2. Blank comment after trim sends null
+        val res2 = repo.sendFeedback(requestId = "r-2", positive = true, comment = "   \n  ")
+        assertTrue(res2.isSuccess)
+        verify(aiAssistantApi).feedback(
+            AiFeedbackRequest(
+                requestId = "r-2",
+                rating = "positive",
+                comment = null
+            )
+        )
+
+        // 3. HTTP 503 error is mapped via ErrorMapper
+        val errorResponse = retrofit2.Response.error<AiFeedbackResponse>(
+            503,
+            "{\"mensaje\":\"Servicio de feedback no disponible\"}".toResponseBody()
+        )
+        whenever(aiAssistantApi.feedback(any())).thenThrow(retrofit2.HttpException(errorResponse))
+
+        val resFail = repo.sendFeedback(requestId = "r-3", positive = true, comment = null)
+        assertTrue(resFail.isFailure)
+        val err = resFail.exceptionOrNull()
+        assertTrue(err is AppError.ServerError)
+        assertEquals("Servicio de feedback no disponible", (err as AppError.ServerError).getDisplayMessage())
+    }
 }

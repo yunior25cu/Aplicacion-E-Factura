@@ -12,6 +12,12 @@ interface AiAssistantApi {
     @GET("AiAssistant/suggestions")
     suspend fun suggestions(): AiSuggestionsResponse
 
+    @GET("AiAssistant/conversations")
+    suspend fun conversations(): List<AiConversationSummary>
+
     @GET("AiAssistant/conversations/{conversationId}/messages")
     suspend fun messages(@Path("conversationId") conversationId: String): List<AiConversationMessage>
+
+    @POST("AiAssistant/feedback")
+    suspend fun feedback(@Body request: AiFeedbackRequest): AiFeedbackResponse
 }

@@ -55,6 +55,32 @@ open class AiAssistantRepository(
         }
     }
 
+    open suspend fun getConversations(): Result<List<AiConversationSummary>> {
+        return try {
+            val list = aiAssistantApi.conversations()
+            Result.success(list)
+        } catch (e: Exception) {
+            Result.failure(ErrorMapper.fromThrowable(e))
+        }
+    }
+
+    open suspend fun sendFeedback(requestId: String, positive: Boolean, comment: String?): Result<Unit> {
+        val rating = if (positive) "positive" else "negative"
+        val cleanComment = comment?.trim()?.takeIf { it.isNotEmpty() }?.take(500)
+        return try {
+            aiAssistantApi.feedback(
+                AiFeedbackRequest(
+                    requestId = requestId,
+                    rating = rating,
+                    comment = cleanComment
+                )
+            )
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(ErrorMapper.fromThrowable(e))
+        }
+    }
+
     open suspend fun canUseAssistant(): Boolean {
         if (!enabled) return false
         cachedCanUse?.let { return it }

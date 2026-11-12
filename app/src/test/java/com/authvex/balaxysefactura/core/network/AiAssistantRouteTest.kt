@@ -208,4 +208,83 @@ class AiAssistantRouteTest {
         assertTrue("ai.assistant" in response.capabilities)
         assertTrue("efactura.sales" in response.capabilities)
     }
+
+    @Test
+    fun `conversations uses GET route and deserializes list with null lastMessageAt and extra fields`() = runBlocking {
+        val jsonResponse = """
+            [
+              {
+                "conversationId": "6290a3c4-1111",
+                "title": "Clientes que más deben",
+                "lastMessageAt": "2026-11-12T03:56:08.771",
+                "messageCount": 2,
+                "extraField": "ignored"
+              },
+              {
+                "conversationId": "6290a3c4-2222",
+                "title": "Sin fecha",
+                "lastMessageAt": null
+              }
+            ]
+        """.trimIndent()
+
+        server.enqueue(MockResponse().setResponseCode(200).setBody(jsonResponse))
+
+        val response = aiApi.conversations()
+
+        val request = server.takeRequest()
+        assertEquals("/api/v1/AiAssistant/conversations", request.path)
+        assertEquals("GET", request.method)
+
+        assertEquals(2, response.size)
+        assertEquals("6290a3c4-1111", response[0].conversationId)
+        assertEquals("Clientes que más deben", response[0].title)
+        assertEquals("2026-11-12T03:56:08.771", response[0].lastMessageAt)
+        assertEquals(2, response[0].messageCount)
+
+        assertEquals("6290a3c4-2222", response[1].conversationId)
+        assertEquals("Sin fecha", response[1].title)
+        assertNull(response[1].lastMessageAt)
+        assertEquals(0, response[1].messageCount)
+    }
+
+    @Test
+    fun `feedback posts expected body with and without comment and lowercase rating`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{ "ok": true }"""))
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{ "ok": true }"""))
+
+        val resNegative = aiApi.feedback(
+            AiFeedbackRequest(
+                requestId = "req-1",
+                rating = "negative",
+                comment = "Faltó detalle"
+            )
+        )
+        assertTrue(resNegative.ok)
+
+        val req1 = server.takeRequest()
+        assertEquals("/api/v1/AiAssistant/feedback", req1.path)
+        assertEquals("POST", req1.method)
+        val body1 = json.parseToJsonElement(req1.body.readUtf8()).jsonObject
+        assertEquals("req-1", body1["requestId"]?.jsonPrimitive?.content)
+        assertEquals("negative", body1["rating"]?.jsonPrimitive?.content)
+        assertEquals("Faltó detalle", body1["comment"]?.jsonPrimitive?.content)
+
+        val resPositive = aiApi.feedback(
+            AiFeedbackRequest(
+                requestId = "req-2",
+                rating = "positive",
+                comment = null
+            )
+        )
+        assertTrue(resPositive.ok)
+
+        val req2 = server.takeRequest()
+        assertEquals("/api/v1/AiAssistant/feedback", req2.path)
+        assertEquals("POST", req2.method)
+        val body2 = json.parseToJsonElement(req2.body.readUtf8()).jsonObject
+        assertEquals("req-2", body2["requestId"]?.jsonPrimitive?.content)
+        assertEquals("positive", body2["rating"]?.jsonPrimitive?.content)
+        assertFalse(body2.containsKey("comment") && body2["comment"]?.jsonPrimitive?.content != null)
+    }
 }

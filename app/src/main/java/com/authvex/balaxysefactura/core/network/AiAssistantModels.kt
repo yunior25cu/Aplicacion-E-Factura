@@ -57,6 +57,26 @@ data class AiConversationMessage(
 )
 
 @Serializable
+data class AiConversationSummary(
+    val conversationId: String,
+    val title: String = "",
+    val lastMessageAt: String? = null,
+    val messageCount: Int = 0
+)
+
+@Serializable
+data class AiFeedbackRequest(
+    val requestId: String,
+    val rating: String,
+    val comment: String? = null
+)
+
+@Serializable
+data class AiFeedbackResponse(
+    val ok: Boolean = true
+)
+
+@Serializable
 data class AccessProfile(
     val capabilities: List<String> = emptyList(),
     val addons: List<String> = emptyList(),
