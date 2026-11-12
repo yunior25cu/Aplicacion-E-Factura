@@ -170,7 +170,7 @@ class AssistantViewModel(
 
     fun selectConversation(conversationId: String) {
         if (conversationId.isBlank()) return
-        if (conversationId == currentConversationId) {
+        if (sameConversationId(conversationId, currentConversationId)) {
             return
         }
 

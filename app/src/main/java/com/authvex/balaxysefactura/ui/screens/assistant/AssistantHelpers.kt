@@ -7,6 +7,13 @@ import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
 
+fun sameConversationId(a: String?, b: String?): Boolean {
+    val cleanA = a?.trim().orEmpty()
+    val cleanB = b?.trim().orEmpty()
+    if (cleanA.isEmpty() || cleanB.isEmpty()) return false
+    return cleanA.equals(cleanB, ignoreCase = true)
+}
+
 fun appendRecognizedSpeech(currentInput: String, recognizedText: String?): String {
     val cleanRecognized = recognizedText?.trim().orEmpty()
     if (cleanRecognized.isEmpty()) return currentInput
@@ -96,6 +103,11 @@ fun buildCfeAssistantPrompt(doc: CfeDetailDto): String {
             append(" ")
             append(ref)
         }
+        if (doc.documentoId > 0) {
+            append(" (id interno ")
+            append(doc.documentoId)
+            append(")")
+        }
         if (receptor != null) {
             append(" de ")
             append(receptor)
@@ -114,6 +126,11 @@ fun buildCollectionAssistantPrompt(collection: CobroDetailDto): String {
         if (ref != null) {
             append(" ")
             append(ref)
+        }
+        if (collection.id > 0) {
+            append(" (id interno ")
+            append(collection.id)
+            append(")")
         }
         if (cliente != null) {
             append(" de ")

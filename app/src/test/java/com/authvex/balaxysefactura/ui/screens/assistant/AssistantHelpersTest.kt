@@ -4,10 +4,35 @@ import com.authvex.balaxysefactura.core.network.CfeDetailDto
 import com.authvex.balaxysefactura.core.network.ClienteDto
 import com.authvex.balaxysefactura.core.network.CobroDetailDto
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.TimeZone
 
 class AssistantHelpersTest {
+
+    @Test
+    fun `sameConversationId compares case-insensitively with trim and rejects nulls or blanks`() {
+        assertTrue(
+            sameConversationId(
+                "febb332f-5149-4797-8d15-58309c28a4ba",
+                "FEBB332F-5149-4797-8D15-58309C28A4BA"
+            )
+        )
+        assertTrue(
+            sameConversationId(
+                "  febb332f-5149-4797-8d15-58309c28a4ba ",
+                " FEBB332F-5149-4797-8D15-58309C28A4BA  "
+            )
+        )
+        assertFalse(sameConversationId("c-1", "c-2"))
+        assertFalse(sameConversationId(null, "c-1"))
+        assertFalse(sameConversationId("c-1", null))
+        assertFalse(sameConversationId(null, null))
+        assertFalse(sameConversationId("", ""))
+        assertFalse(sameConversationId("   ", "c-1"))
+        assertFalse(sameConversationId("c-1", "   "))
+    }
 
     @Test
     fun `appendRecognizedSpeech handles empty input, existing text and whitespace`() {
@@ -51,15 +76,15 @@ class AssistantHelpersTest {
     }
 
     @Test
-    fun `buildCfeAssistantPrompt formats complete and partial CFE data without gaps`() {
+    fun `buildCfeAssistantPrompt formats complete and partial CFE data with internal id and without gaps`() {
         val fullDoc = CfeDetailDto(
-            documentoId = 10,
+            documentoId = 1234,
             serie = "A",
-            numero = 123L,
-            receptor = "ABITAB S A"
+            numero = 22036L,
+            receptor = "EL SANTORAL"
         )
         assertEquals(
-            "Contame el estado de la factura A-123 de ABITAB S A: saldo pendiente, vencimiento y cobros aplicados.",
+            "Contame el estado de la factura A-22036 (id interno 1234) de EL SANTORAL: saldo pendiente, vencimiento y cobros aplicados.",
             buildCfeAssistantPrompt(fullDoc)
         )
 
@@ -70,38 +95,49 @@ class AssistantHelpersTest {
             receptor = "   "
         )
         assertEquals(
-            "Contame el estado de la factura A-123: saldo pendiente, vencimiento y cobros aplicados.",
+            "Contame el estado de la factura A-123 (id interno 10): saldo pendiente, vencimiento y cobros aplicados.",
             buildCfeAssistantPrompt(noReceptor)
         )
 
-        val onlyNumeroAndReceptor = CfeDetailDto(
-            documentoId = 10,
+        val withoutSerieOrNumeroWithId = CfeDetailDto(
+            documentoId = 1234,
             serie = null,
-            numero = 456L,
-            receptor = "BARRETO"
+            numero = null,
+            receptor = "EL SANTORAL"
         )
         assertEquals(
-            "Contame el estado de la factura 456 de BARRETO: saldo pendiente, vencimiento y cobros aplicados.",
-            buildCfeAssistantPrompt(onlyNumeroAndReceptor)
+            "Contame el estado de la factura (id interno 1234) de EL SANTORAL: saldo pendiente, vencimiento y cobros aplicados.",
+            buildCfeAssistantPrompt(withoutSerieOrNumeroWithId)
         )
 
-        val emptyDoc = CfeDetailDto(documentoId = 10)
+        val withZeroId = CfeDetailDto(
+            documentoId = 0,
+            serie = "A",
+            numero = 22036L,
+            receptor = "EL SANTORAL"
+        )
+        assertEquals(
+            "Contame el estado de la factura A-22036 de EL SANTORAL: saldo pendiente, vencimiento y cobros aplicados.",
+            buildCfeAssistantPrompt(withZeroId)
+        )
+
+        val emptyDocZeroId = CfeDetailDto(documentoId = 0)
         assertEquals(
             "Contame el estado de la factura: saldo pendiente, vencimiento y cobros aplicados.",
-            buildCfeAssistantPrompt(emptyDoc)
+            buildCfeAssistantPrompt(emptyDocZeroId)
         )
     }
 
     @Test
-    fun `buildCollectionAssistantPrompt formats complete and partial collection data without gaps`() {
+    fun `buildCollectionAssistantPrompt formats complete and partial collection data with internal id and without gaps`() {
         val withFolioAndClient = CobroDetailDto(
-            id = 5,
-            folio = "COB-102",
-            numero = 102,
-            cliente = ClienteDto(id = 1, nombre = "CLUB MALVIN")
+            id = 5678,
+            folio = "CO-140/2025",
+            numero = 140,
+            cliente = ClienteDto(id = 1, nombre = "EDGAR ALTAMIRANDA")
         )
         assertEquals(
-            "Resumime el cobro COB-102 de CLUB MALVIN: qué facturas cancela y cómo se pagó.",
+            "Resumime el cobro CO-140/2025 (id interno 5678) de EDGAR ALTAMIRANDA: qué facturas cancela y cómo se pagó.",
             buildCollectionAssistantPrompt(withFolioAndClient)
         )
 
@@ -112,25 +148,36 @@ class AssistantHelpersTest {
             cliente = null
         )
         assertEquals(
-            "Resumime el cobro 102: qué facturas cancela y cómo se pagó.",
+            "Resumime el cobro 102 (id interno 5): qué facturas cancela y cómo se pagó.",
             buildCollectionAssistantPrompt(withNumeroOnly)
         )
 
-        val withClientOnly = CobroDetailDto(
-            id = 5,
+        val withClientOnlyAndId = CobroDetailDto(
+            id = 5678,
             folio = "  ",
             numero = null,
             cliente = ClienteDto(id = 1, nombre = "CLUB MALVIN")
         )
         assertEquals(
-            "Resumime el cobro de CLUB MALVIN: qué facturas cancela y cómo se pagó.",
-            buildCollectionAssistantPrompt(withClientOnly)
+            "Resumime el cobro (id interno 5678) de CLUB MALVIN: qué facturas cancela y cómo se pagó.",
+            buildCollectionAssistantPrompt(withClientOnlyAndId)
         )
 
-        val emptyCobro = CobroDetailDto(id = 5)
+        val withZeroId = CobroDetailDto(
+            id = 0,
+            folio = "CO-140/2025",
+            numero = 140,
+            cliente = ClienteDto(id = 1, nombre = "EDGAR ALTAMIRANDA")
+        )
+        assertEquals(
+            "Resumime el cobro CO-140/2025 de EDGAR ALTAMIRANDA: qué facturas cancela y cómo se pagó.",
+            buildCollectionAssistantPrompt(withZeroId)
+        )
+
+        val emptyCobroZeroId = CobroDetailDto(id = 0)
         assertEquals(
             "Resumime el cobro: qué facturas cancela y cómo se pagó.",
-            buildCollectionAssistantPrompt(emptyCobro)
+            buildCollectionAssistantPrompt(emptyCobroZeroId)
         )
     }
 }

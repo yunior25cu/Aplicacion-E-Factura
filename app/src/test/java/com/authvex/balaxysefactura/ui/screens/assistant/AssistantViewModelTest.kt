@@ -479,6 +479,39 @@ class AssistantViewModelTest {
     }
 
     @Test
+    fun `selectConversation with uppercase id matching lowercase currentConversationId does not call getMessages and preserves messages with requestId and tarjetas`() = runTest(testScheduler) {
+        val lowerId = "febb332f-5149-4797-8d15-58309c28a4ba"
+        val upperId = "FEBB332F-5149-4797-8D15-58309C28A4BA"
+        val tarjeta = AiTarjeta(tool = "deuda_vencida", titulo = "Deuda vencida")
+
+        fakeRepository.nextResponse = Result.success(
+            AiChatResponse(
+                response = "Respuesta con tarjeta",
+                conversationId = lowerId,
+                requestId = "req-999",
+                tarjetas = listOf(tarjeta)
+            )
+        )
+
+        val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
+        viewModel.send("¿Quién me debe?")
+
+        assertEquals(lowerId, viewModel.currentConversationId)
+        assertEquals(2, viewModel.messages.size)
+        assertEquals(0, fakeRepository.historyCallCount)
+
+        viewModel.selectConversation(upperId)
+
+        assertEquals(0, fakeRepository.historyCallCount)
+        assertEquals(lowerId, viewModel.currentConversationId)
+        assertEquals(2, viewModel.messages.size)
+        val assistantMsg = viewModel.messages[1]
+        assertEquals("req-999", assistantMsg.requestId)
+        assertEquals(1, assistantMsg.tarjetas.size)
+        assertEquals("deuda_vencida", assistantMsg.tarjetas[0].tool)
+    }
+
+    @Test
     fun `submitFeedback positive records rating and blocks a second submission`() = runTest(testScheduler) {
         fakeRepository.feedbackResult = Result.success(Unit)
         val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
