@@ -53,7 +53,9 @@ data class AiConversationMessage(
     val content: String,
     val toolsUsed: List<String>? = null,
     val durationMs: Int? = null,
-    val createdAt: String = ""
+    val createdAt: String = "",
+    val tarjetas: List<AiTarjeta>? = null,
+    val requestId: String? = null
 )
 
 @Serializable

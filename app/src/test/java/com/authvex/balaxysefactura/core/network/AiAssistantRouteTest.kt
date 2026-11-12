@@ -3,6 +3,9 @@ package com.authvex.balaxysefactura.core.network
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.double
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
@@ -181,9 +184,83 @@ class AiAssistantRouteTest {
         assertEquals(2, response.size)
         assertEquals("user", response[0].role)
         assertEquals("Hola", response[0].content)
+        assertNull(response[0].tarjetas)
+        assertNull(response[0].requestId)
         assertEquals("assistant", response[1].role)
         assertEquals("Hola, ¿en qué puedo ayudarte?", response[1].content)
         assertEquals(listOf("deuda_vencida"), response[1].toolsUsed)
+        assertNull(response[1].tarjetas)
+        assertNull(response[1].requestId)
+    }
+
+    @Test
+    fun `messages deserializes tarjetas, requestId, confirmacion_vencida, and null fields`() = runBlocking {
+        val jsonResponse = """
+            [
+              {
+                "role": "user",
+                "content": "cuanto me deben los clientes",
+                "createdAt": "2026-11-12T16:28:10.5",
+                "tarjetas": [],
+                "requestId": null
+              },
+              {
+                "role": "assistant",
+                "content": "El total que te deben ...",
+                "createdAt": "2026-11-12T16:28:31.2",
+                "requestId": "8f1c-req",
+                "tarjetas": [
+                  {
+                    "tool": "cuentas_por_cobrar",
+                    "titulo": "Cuentas por cobrar",
+                    "datos": { "total": 1525048.2 }
+                  },
+                  {
+                    "tool": "preparar_emision_cfe",
+                    "titulo": "Emitir CFE",
+                    "datos": { "id_factura": 10, "total": 122, "confirmacion_vencida": true }
+                  }
+                ]
+              },
+              {
+                "role": "assistant",
+                "content": "Mensaje con nulos explícitos",
+                "createdAt": "2026-11-12T16:29:00.0",
+                "tarjetas": null,
+                "requestId": null
+              }
+            ]
+        """.trimIndent()
+
+        server.enqueue(MockResponse().setResponseCode(200).setBody(jsonResponse))
+
+        val response = aiApi.messages("conv-hist-1")
+
+        assertEquals(3, response.size)
+
+        assertEquals("user", response[0].role)
+        assertTrue(response[0].tarjetas != null && response[0].tarjetas!!.isEmpty())
+        assertNull(response[0].requestId)
+
+        val assistantMsg = response[1]
+        assertEquals("assistant", assistantMsg.role)
+        assertEquals("8f1c-req", assistantMsg.requestId)
+        assertNotNull(assistantMsg.tarjetas)
+        assertEquals(2, assistantMsg.tarjetas!!.size)
+
+        val card1 = assistantMsg.tarjetas!![0]
+        assertEquals("cuentas_por_cobrar", card1.tool)
+        assertEquals("Cuentas por cobrar", card1.titulo)
+        assertEquals(1525048.2, card1.datos.jsonObject["total"]!!.jsonPrimitive.double, 0.01)
+
+        val card2 = assistantMsg.tarjetas!![1]
+        assertEquals("preparar_emision_cfe", card2.tool)
+        assertEquals("Emitir CFE", card2.titulo)
+        assertEquals(10, card2.datos.jsonObject["id_factura"]!!.jsonPrimitive.int)
+        assertTrue(card2.datos.jsonObject["confirmacion_vencida"]!!.jsonPrimitive.boolean)
+
+        assertNull(response[2].tarjetas)
+        assertNull(response[2].requestId)
     }
 
     @Test
