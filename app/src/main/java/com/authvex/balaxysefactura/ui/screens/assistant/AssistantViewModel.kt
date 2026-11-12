@@ -17,6 +17,7 @@ import java.util.UUID
 
 enum class ChatRole { USER, ASSISTANT }
 enum class MessageStatus { SENT, PENDING_ERROR }
+enum class FeedbackRating { POSITIVE, NEGATIVE }
 
 data class ChatMessageUi(
     val id: String = UUID.randomUUID().toString(),
@@ -32,7 +33,8 @@ data class ChatMessageUi(
 class AssistantViewModel(
     private val repository: AiAssistantRepository,
     private val authPreferences: AuthPreferences,
-    private val initialMessage: String? = null
+    private val initialMessage: String? = null,
+    private val startNewConversation: Boolean = false
 ) : ViewModel() {
 
     var messages by mutableStateOf<List<ChatMessageUi>>(emptyList())
@@ -55,7 +57,29 @@ class AssistantViewModel(
     var actionStates by mutableStateOf<Map<String, ActionExecutionState>>(emptyMap())
         private set
 
+    var currentConversationId by mutableStateOf<String?>(null)
+        private set
+
+    var conversations by mutableStateOf<List<AiConversationSummary>>(emptyList())
+        private set
+
+    var isLoadingConversations by mutableStateOf(false)
+        private set
+
+    var conversationsError by mutableStateOf<String?>(null)
+        private set
+
+    var feedbackStates by mutableStateOf<Map<String, FeedbackRating>>(emptyMap())
+        private set
+
+    var feedbackSendingIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+
+    var feedbackError by mutableStateOf<String?>(null)
+        private set
+
     private var initialMessageSent = false
+    private var conversationCleared = false
     private var slowTimerJob: Job? = null
     private var currentGen = 0
 
@@ -65,6 +89,18 @@ class AssistantViewModel(
 
     // Sin sugerencias del servidor: se generan con IA (tokens y segundos de espera).
     private fun loadInitialData() {
+        if (startNewConversation) {
+            conversationCleared = true
+            currentConversationId = null
+            viewModelScope.launch {
+                authPreferences.clearAiConversationId()
+                if (!initialMessage.isNullOrBlank() && !initialMessageSent) {
+                    initialMessageSent = true
+                    send(initialMessage)
+                }
+            }
+            return
+        }
         if (!initialMessage.isNullOrBlank() && !initialMessageSent) {
             initialMessageSent = true
             send(initialMessage)
@@ -76,12 +112,15 @@ class AssistantViewModel(
         viewModelScope.launch {
             val savedConvId = authPreferences.getAiConversationIdSync()
             if (!savedConvId.isNullOrBlank()) {
+                currentConversationId = savedConvId
                 isLoadingHistory = true
                 historyError = null
 
                 val res = repository.getMessages(savedConvId)
                 res.onSuccess { historyList ->
                     if (historyList.isEmpty()) {
+                        currentConversationId = null
+                        conversationCleared = true
                         authPreferences.clearAiConversationId()
                     } else {
                         val mappedHistory = historyList.map { msg ->
@@ -107,6 +146,93 @@ class AssistantViewModel(
     fun onInputChanged(newInput: String) {
         if (newInput.length <= 10000) {
             input = newInput
+        }
+    }
+
+    fun onSpeechRecognized(recognizedText: String?) {
+        input = appendRecognizedSpeech(input, recognizedText)
+    }
+
+    fun loadConversations() {
+        viewModelScope.launch {
+            isLoadingConversations = true
+            conversationsError = null
+            val res = repository.getConversations()
+            res.onSuccess { list ->
+                conversations = list
+            }.onFailure { throwable ->
+                val appError = ErrorMapper.fromThrowable(throwable)
+                conversationsError = appError.getDisplayMessage()
+            }
+            isLoadingConversations = false
+        }
+    }
+
+    fun selectConversation(conversationId: String) {
+        if (conversationId.isBlank()) return
+        if (conversationId == currentConversationId) {
+            return
+        }
+
+        currentGen++
+        slowTimerJob?.cancel()
+        isWaiting = false
+        isSlow = false
+        currentConversationId = conversationId
+        conversationCleared = false
+        messages = emptyList()
+        historyError = null
+
+        val capturedGen = currentGen
+        viewModelScope.launch {
+            authPreferences.saveAiConversationId(conversationId)
+            isLoadingHistory = true
+            val res = repository.getMessages(conversationId)
+            if (capturedGen != currentGen) {
+                isLoadingHistory = false
+                return@launch
+            }
+            res.onSuccess { historyList ->
+                messages = historyList.map { msg ->
+                    val isUser = msg.role.equals("user", ignoreCase = true)
+                    ChatMessageUi(
+                        role = if (isUser) ChatRole.USER else ChatRole.ASSISTANT,
+                        text = msg.content,
+                        status = MessageStatus.SENT,
+                        isFromHistory = true
+                    )
+                }
+            }.onFailure {
+                historyError = "No se pudo cargar la conversación anterior. Podés seguir escribiendo o empezar una nueva."
+            }
+            isLoadingHistory = false
+        }
+    }
+
+    fun getFeedbackRating(requestId: String): FeedbackRating? {
+        return feedbackStates[requestId]
+    }
+
+    fun clearFeedbackError() {
+        feedbackError = null
+    }
+
+    fun submitFeedback(requestId: String, positive: Boolean, comment: String? = null) {
+        if (requestId.isBlank()) return
+        if (feedbackStates.containsKey(requestId) || feedbackSendingIds.contains(requestId)) return
+
+        val rating = if (positive) FeedbackRating.POSITIVE else FeedbackRating.NEGATIVE
+        feedbackStates = feedbackStates + (requestId to rating)
+        feedbackSendingIds = feedbackSendingIds + requestId
+
+        viewModelScope.launch {
+            val result = repository.sendFeedback(requestId, positive, comment)
+            feedbackSendingIds = feedbackSendingIds - requestId
+            result.onFailure { throwable ->
+                feedbackStates = feedbackStates - requestId
+                val appError = ErrorMapper.fromThrowable(throwable)
+                feedbackError = appError.getDisplayMessage()
+            }
         }
     }
 
@@ -195,7 +321,11 @@ class AssistantViewModel(
 
     private suspend fun executeSendMessage(userMessage: ChatMessageUi, gen: Int) {
         try {
-            val conversationId = authPreferences.getAiConversationIdSync()
+            val conversationId = if (conversationCleared) {
+                currentConversationId
+            } else {
+                currentConversationId ?: authPreferences.getAiConversationIdSync()
+            }
             val result = repository.sendMessage(userMessage.text, conversationId)
 
             if (gen != currentGen) {
@@ -203,6 +333,8 @@ class AssistantViewModel(
             }
 
             result.onSuccess { response ->
+                currentConversationId = response.conversationId
+                conversationCleared = false
                 authPreferences.saveAiConversationId(response.conversationId)
                 val assistantMsg = ChatMessageUi(
                     role = ChatRole.ASSISTANT,
@@ -251,6 +383,8 @@ class AssistantViewModel(
             slowTimerJob?.cancel()
             isWaiting = false
             isSlow = false
+            currentConversationId = null
+            conversationCleared = true
             messages = emptyList()
             historyError = null
             authPreferences.clearAiConversationId()

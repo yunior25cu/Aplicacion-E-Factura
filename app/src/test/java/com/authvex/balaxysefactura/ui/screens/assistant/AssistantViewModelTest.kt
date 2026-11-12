@@ -30,10 +30,18 @@ class FakeAiAssistantRepository(
 
     var nextResponse: Result<AiChatResponse>? = null
     var historyResult: Result<List<AiConversationMessage>>? = null
+    var conversationsResult: Result<List<AiConversationSummary>>? = null
+    var feedbackResult: Result<Unit>? = null
     var suggestionsResult: Result<List<String>>? = null
     var actionResult: Result<AiAccionResultado>? = null
     var suggestionsCallCount = 0
     var actionCount = 0
+    var historyCallCount = 0
+    var conversationsCallCount = 0
+    var feedbackCallCount = 0
+    var lastFeedbackRequestId: String? = null
+    var lastFeedbackPositive: Boolean? = null
+    var lastFeedbackComment: String? = null
     var lastMessageSent: String? = null
     var lastConversationIdSent: String? = null
     var sendCount = 0
@@ -69,7 +77,24 @@ class FakeAiAssistantRepository(
     }
 
     override suspend fun getMessages(conversationId: String): Result<List<AiConversationMessage>> {
+        historyCallCount++
         return historyResult ?: Result.success(emptyList())
+    }
+
+    override suspend fun getConversations(): Result<List<AiConversationSummary>> {
+        conversationsCallCount++
+        return conversationsResult ?: Result.success(emptyList())
+    }
+
+    override suspend fun sendFeedback(requestId: String, positive: Boolean, comment: String?): Result<Unit> {
+        feedbackCallCount++
+        lastFeedbackRequestId = requestId
+        lastFeedbackPositive = positive
+        lastFeedbackComment = comment
+        if (delayMs > 0) {
+            kotlinx.coroutines.delay(delayMs)
+        }
+        return feedbackResult ?: Result.success(Unit)
     }
 
     override suspend fun canUseAssistant(): Boolean = true
@@ -401,5 +426,113 @@ class AssistantViewModelTest {
         advanceTimeBy(5100L)
 
         assertTrue(viewModel.isSlow)
+    }
+
+    @Test
+    fun `selectConversation saves id, replaces messages and discards in-flight response`() = runTest(testScheduler) {
+        fakeRepository.delayMs = 5000L
+        fakeRepository.nextResponse = Result.success(AiChatResponse("Respuesta en vuelo vieja", "c-old", "r-old"))
+
+        val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
+        viewModel.send("Mensaje en vuelo")
+        assertTrue(viewModel.isWaiting)
+
+        fakeRepository.historyResult = Result.success(
+            listOf(
+                AiConversationMessage("user", "Pregunta conversación 2"),
+                AiConversationMessage("assistant", "Respuesta conversación 2")
+            )
+        )
+
+        viewModel.selectConversation("c-200")
+
+        assertFalse(viewModel.isWaiting)
+        assertEquals("c-200", viewModel.currentConversationId)
+        verify(authPreferences).saveAiConversationId("c-200")
+        assertEquals(2, viewModel.messages.size)
+        assertTrue(viewModel.messages.all { it.isFromHistory })
+        assertEquals("Pregunta conversación 2", viewModel.messages[0].text)
+        assertEquals("Respuesta conversación 2", viewModel.messages[1].text)
+
+        // Advance time so the old in-flight response finishes -> must be discarded
+        advanceTimeBy(6000L)
+        assertEquals(2, viewModel.messages.size)
+        verify(authPreferences, never()).saveAiConversationId("c-old")
+    }
+
+    @Test
+    fun `selectConversation on current conversation does not reload`() = runTest(testScheduler) {
+        whenever(authPreferences.getAiConversationIdSync()).thenReturn("c-actual")
+        fakeRepository.historyResult = Result.success(
+            listOf(AiConversationMessage("user", "Mensaje inicial"))
+        )
+
+        val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
+        assertEquals(1, fakeRepository.historyCallCount)
+        assertEquals("c-actual", viewModel.currentConversationId)
+
+        viewModel.selectConversation("c-actual")
+
+        // No additional call to getMessages or saveAiConversationId
+        assertEquals(1, fakeRepository.historyCallCount)
+        verify(authPreferences, never()).saveAiConversationId("c-actual")
+    }
+
+    @Test
+    fun `submitFeedback positive records rating and blocks a second submission`() = runTest(testScheduler) {
+        fakeRepository.feedbackResult = Result.success(Unit)
+        val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
+
+        viewModel.submitFeedback(requestId = "req-100", positive = true, comment = null)
+
+        assertEquals(FeedbackRating.POSITIVE, viewModel.getFeedbackRating("req-100"))
+        assertEquals(1, fakeRepository.feedbackCallCount)
+        assertEquals("req-100", fakeRepository.lastFeedbackRequestId)
+        assertEquals(true, fakeRepository.lastFeedbackPositive)
+
+        // Second attempt on the same requestId is ignored
+        viewModel.submitFeedback(requestId = "req-100", positive = false, comment = "Cambio de opinión")
+        assertEquals(1, fakeRepository.feedbackCallCount)
+        assertEquals(FeedbackRating.POSITIVE, viewModel.getFeedbackRating("req-100"))
+    }
+
+    @Test
+    fun `submitFeedback failure clears rating to re-enable buttons and sets feedbackError`() = runTest(testScheduler) {
+        fakeRepository.feedbackResult = Result.failure(AppError.ServerError(503, "No se pudo guardar la calificación."))
+        val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
+
+        viewModel.submitFeedback(requestId = "req-200", positive = false, comment = "Mal cálculo")
+
+        assertNull(viewModel.getFeedbackRating("req-200"))
+        assertEquals("No se pudo guardar la calificación.", viewModel.feedbackError)
+        assertEquals(1, fakeRepository.feedbackCallCount)
+
+        // Can retry since rating was cleared after failure
+        fakeRepository.feedbackResult = Result.success(Unit)
+        viewModel.submitFeedback(requestId = "req-200", positive = false, comment = "Mal cálculo")
+        assertEquals(FeedbackRating.NEGATIVE, viewModel.getFeedbackRating("req-200"))
+        assertEquals(2, fakeRepository.feedbackCallCount)
+    }
+
+    @Test
+    fun `startNewConversation true with initialMessage clears saved id before sending and does not load history`() = runTest(testScheduler) {
+        whenever(authPreferences.getAiConversationIdSync()).thenReturn("c-previa")
+        fakeRepository.nextResponse = Result.success(
+            AiChatResponse("Estado de factura A-123", "c-nueva", "r-nueva")
+        )
+
+        val viewModel = AssistantViewModel(
+            repository = fakeRepository,
+            authPreferences = authPreferences,
+            initialMessage = "Contame el estado de la factura A-123: saldo pendiente, vencimiento y cobros aplicados.",
+            startNewConversation = true
+        )
+
+        verify(authPreferences).clearAiConversationId()
+        assertEquals(0, fakeRepository.historyCallCount)
+        assertEquals(1, fakeRepository.sendCount)
+        assertNull(fakeRepository.lastConversationIdSent)
+        assertEquals("c-nueva", viewModel.currentConversationId)
+        assertEquals(2, viewModel.messages.size)
     }
 }
