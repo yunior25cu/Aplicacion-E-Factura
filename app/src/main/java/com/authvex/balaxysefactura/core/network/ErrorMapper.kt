@@ -49,10 +49,11 @@ object ErrorMapper {
         return try {
             val jsonElement = json.parseToJsonElement(errorBody).jsonObject
             val detail = jsonElement["detail"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+            val mensaje = jsonElement["mensaje"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
             val message = jsonElement["message"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
             val title = jsonElement["title"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
 
-            detail ?: message ?: title
+            detail ?: mensaje ?: message ?: title
         } catch (ex: Exception) {
             null
         }
@@ -63,11 +64,12 @@ object ErrorMapper {
         return try {
             val jsonElement = json.parseToJsonElement(errorBody).jsonObject
             val detail = jsonElement["detail"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+            val mensaje = jsonElement["mensaje"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
             val message = jsonElement["message"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
             val title = jsonElement["title"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
             val reasonCode = jsonElement["code"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
 
-            val mainText = detail ?: message ?: title
+            val mainText = detail ?: mensaje ?: message ?: title
             AppError.Forbidden(detail = mainText, reasonCode = reasonCode)
         } catch (ex: Exception) {
             AppError.Forbidden()
@@ -81,10 +83,11 @@ object ErrorMapper {
             val jsonElement = json.parseToJsonElement(errorBody).jsonObject
 
             val detail = jsonElement["detail"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+            val mensaje = jsonElement["mensaje"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
             val message = jsonElement["message"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
             val title = jsonElement["title"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
 
-            val mainMessage = detail ?: message ?: title
+            val mainMessage = detail ?: mensaje ?: message ?: title
 
             val errorsMap = jsonElement["errors"]?.jsonObject?.mapValues { entry ->
                 entry.value.jsonArray.map { it.jsonPrimitive.content }

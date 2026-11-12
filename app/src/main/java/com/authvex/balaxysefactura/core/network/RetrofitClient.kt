@@ -28,13 +28,20 @@ class RetrofitClient(private val authPreferences: AuthPreferences) {
     }
 
     // Usamos lazy para evitar circularidad al crear el Authenticator que depende de la Api
-    private val okHttpClient: OkHttpClient by lazy {
+    internal val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(authPreferences))
             .authenticator(TokenAuthenticator(authPreferences, lazy { create(AuthApi::class.java) }))
             .addInterceptor(loggingInterceptor)
             .connectTimeout(Config.CONNECT_TIMEOUT, TimeUnit.SECONDS)
             .readTimeout(Config.READ_TIMEOUT, TimeUnit.SECONDS)
+            .build()
+    }
+
+    internal val longRunningOkHttpClient: OkHttpClient by lazy {
+        okHttpClient.newBuilder()
+            .readTimeout(Config.AI_READ_TIMEOUT, TimeUnit.SECONDS)
+            .callTimeout(Config.AI_CALL_TIMEOUT, TimeUnit.SECONDS)
             .build()
     }
 
@@ -46,5 +53,15 @@ class RetrofitClient(private val authPreferences: AuthPreferences) {
             .build()
     }
 
+    private val longRunningRetrofit: Retrofit by lazy {
+        Retrofit.Builder()
+            .baseUrl(Config.BASE_URL)
+            .client(longRunningOkHttpClient)
+            .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+            .build()
+    }
+
     fun <T> create(service: Class<T>): T = retrofit.create(service)
+
+    fun <T> createLongRunning(service: Class<T>): T = longRunningRetrofit.create(service)
 }

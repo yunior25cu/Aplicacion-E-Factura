@@ -125,4 +125,39 @@ class ErrorMapperTest {
         assertFalse(message.contains("traceId"))
         assertEquals("Detalle para usuario", message)
     }
+
+    @Test
+    fun `ERROR_MAPPER_503_WITH_MENSAJE_PARSES_SERVER_ERROR_DETAIL`() {
+        val jsonBody = """
+            {
+              "mensaje": "El orquestador de IA está fuera de servicio temporalmente"
+            }
+        """.trimIndent()
+
+        val exception = createHttpException(503, jsonBody)
+        val appError = ErrorMapper.fromThrowable(exception)
+
+        assertTrue(appError is AppError.ServerError)
+        val serverErr = appError as AppError.ServerError
+        assertEquals(503, serverErr.code)
+        assertEquals("El orquestador de IA está fuera de servicio temporalmente", serverErr.detail)
+        assertEquals("El orquestador de IA está fuera de servicio temporalmente", appError.getDisplayMessage())
+    }
+
+    @Test
+    fun `ERROR_MAPPER_403_WITH_MENSAJE_PARSES_FORBIDDEN_DETAIL`() {
+        val jsonBody = """
+            {
+              "mensaje": "Tu empresa no cuenta con la suscripción del Asistente"
+            }
+        """.trimIndent()
+
+        val exception = createHttpException(403, jsonBody)
+        val appError = ErrorMapper.fromThrowable(exception)
+
+        assertTrue(appError is AppError.Forbidden)
+        val forbiddenErr = appError as AppError.Forbidden
+        assertEquals("Tu empresa no cuenta con la suscripción del Asistente", forbiddenErr.detail)
+        assertEquals("Tu empresa no cuenta con la suscripción del Asistente", appError.getDisplayMessage())
+    }
 }

@@ -6,4 +6,6 @@ object Config {
     val BASE_URL = BuildConfig.BASE_URL
     const val CONNECT_TIMEOUT = 30L
     const val READ_TIMEOUT = 30L
+    const val AI_READ_TIMEOUT = 90L
+    const val AI_CALL_TIMEOUT = 100L
 }
