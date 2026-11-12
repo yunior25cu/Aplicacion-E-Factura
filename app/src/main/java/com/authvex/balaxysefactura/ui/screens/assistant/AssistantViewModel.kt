@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.authvex.balaxysefactura.core.auth.AuthPreferences
 import com.authvex.balaxysefactura.core.network.*
 import com.authvex.balaxysefactura.core.repository.AiAssistantRepository
+import com.authvex.balaxysefactura.ui.screens.assistant.cards.ActionExecutionState
+import com.authvex.balaxysefactura.ui.screens.assistant.cards.AiConfirmAction
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -23,7 +25,8 @@ data class ChatMessageUi(
     val status: MessageStatus = MessageStatus.SENT,
     val errorText: String? = null,
     val requestId: String? = null,
-    val isFromHistory: Boolean = false
+    val isFromHistory: Boolean = false,
+    val tarjetas: List<AiTarjeta> = emptyList()
 )
 
 class AssistantViewModel(
@@ -48,6 +51,9 @@ class AssistantViewModel(
         private set
 
     var input by mutableStateOf("")
+
+    var actionStates by mutableStateOf<Map<String, ActionExecutionState>>(emptyMap())
+        private set
 
     private var initialMessageSent = false
     private var slowTimerJob: Job? = null
@@ -104,6 +110,37 @@ class AssistantViewModel(
         }
     }
 
+    fun getActionExecutionState(actionKey: String): ActionExecutionState {
+        return actionStates[actionKey] ?: ActionExecutionState.Pending
+    }
+
+    fun executeCardAction(actionKey: String, action: AiConfirmAction) {
+        val currentState = getActionExecutionState(actionKey)
+        if (currentState == ActionExecutionState.Executing) return
+
+        actionStates = actionStates + (actionKey to ActionExecutionState.Executing)
+
+        viewModelScope.launch {
+            val result = repository.executeAction(action.herramienta, action.argumentos)
+            result.onSuccess { outcome ->
+                val nextState = if (outcome.ok) {
+                    ActionExecutionState.DoneSuccess(outcome.mensaje)
+                } else {
+                    ActionExecutionState.DoneError(outcome.mensaje)
+                }
+                actionStates = actionStates + (actionKey to nextState)
+            }.onFailure { throwable ->
+                val appError = ErrorMapper.fromThrowable(throwable)
+                val errMsg = appError.getDisplayMessage()
+                actionStates = actionStates + (actionKey to ActionExecutionState.DoneError(errMsg))
+            }
+        }
+    }
+
+    fun cancelCardAction(actionKey: String) {
+        actionStates = actionStates + (actionKey to ActionExecutionState.Cancelled)
+    }
+
     fun send(text: String) {
         val trimmed = text.trim()
         if (trimmed.isEmpty() || isWaiting) return
@@ -149,7 +186,7 @@ class AssistantViewModel(
     private fun startSlowTimer() {
         slowTimerJob?.cancel()
         slowTimerJob = viewModelScope.launch {
-            delay(15000)
+            delay(5000)
             if (isWaiting) {
                 isSlow = true
             }
@@ -171,7 +208,8 @@ class AssistantViewModel(
                     role = ChatRole.ASSISTANT,
                     text = response.response,
                     status = MessageStatus.SENT,
-                    requestId = response.requestId
+                    requestId = response.requestId,
+                    tarjetas = response.tarjetas ?: emptyList()
                 )
                 messages = messages + assistantMsg
             }.onFailure { throwable ->

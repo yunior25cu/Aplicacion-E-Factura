@@ -1,5 +1,8 @@
 package com.authvex.balaxysefactura.ui.screens.assistant
 
+import android.content.Intent
+import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -20,14 +23,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.authvex.balaxysefactura.BuildConfig
+import com.authvex.balaxysefactura.ui.screens.assistant.cards.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AssistantScreen(
     viewModel: AssistantViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToCfeDetail: (Long) -> Unit = {},
+    onNavigateToCollectionDetail: (Long) -> Unit = {}
 ) {
     val messages = viewModel.messages
     val isWaiting = viewModel.isWaiting
@@ -188,6 +196,9 @@ fun AssistantScreen(
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 MessageBubble(
                                     message = msg,
+                                    viewModel = viewModel,
+                                    onNavigateToCfeDetail = onNavigateToCfeDetail,
+                                    onNavigateToCollectionDetail = onNavigateToCollectionDetail,
                                     onRetry = { viewModel.retry(msg.id) }
                                 )
                                 if (isLastHistoryMsg) {
@@ -276,9 +287,13 @@ fun AssistantScreen(
 @Composable
 fun MessageBubble(
     message: ChatMessageUi,
+    viewModel: AssistantViewModel,
+    onNavigateToCfeDetail: (Long) -> Unit,
+    onNavigateToCollectionDetail: (Long) -> Unit,
     onRetry: () -> Unit
 ) {
     val isUser = message.role == ChatRole.USER
+    val context = LocalContext.current
     val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
 
     Column(
@@ -308,6 +323,47 @@ fun MessageBubble(
                             content = message.text,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                }
+
+                if (!isUser && message.tarjetas.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        message.tarjetas.forEachIndexed { cardIdx, tarjeta ->
+                            val cardModel = remember(tarjeta) { buildCard(tarjeta) }
+                            val actionKey = "${message.id}_${cardIdx}"
+                            val executionState = viewModel.getActionExecutionState(actionKey)
+
+                            AiCardView(
+                                model = cardModel,
+                                executionState = executionState,
+                                onExecuteConfirm = {
+                                    cardModel.confirmAction?.let { act ->
+                                        viewModel.executeCardAction(actionKey, act)
+                                    }
+                                },
+                                onCancel = {
+                                    viewModel.cancelCardAction(actionKey)
+                                },
+                                onOpenLink = { dest ->
+                                    when (dest) {
+                                        is ErpLinkDestination.NativeCfeDetail -> onNavigateToCfeDetail(dest.id)
+                                        is ErpLinkDestination.NativeCollectionDetail -> onNavigateToCollectionDetail(dest.id)
+                                        is ErpLinkDestination.ExternalWeb -> {
+                                            try {
+                                                val customTabsIntent = CustomTabsIntent.Builder().build()
+                                                customTabsIntent.launchUrl(context, Uri.parse(dest.url))
+                                            } catch (_: Exception) {
+                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(dest.url))
+                                                context.startActivity(intent)
+                                            }
+                                        }
+                                        is ErpLinkDestination.Ignored -> {}
+                                    }
+                                },
+                                webBaseUrl = BuildConfig.WEB_BASE_URL
+                            )
+                        }
                     }
                 }
 

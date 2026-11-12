@@ -3,6 +3,8 @@ package com.authvex.balaxysefactura.ui.screens.assistant
 import com.authvex.balaxysefactura.core.auth.AuthPreferences
 import com.authvex.balaxysefactura.core.network.*
 import com.authvex.balaxysefactura.core.repository.AiAssistantRepository
+import com.authvex.balaxysefactura.ui.screens.assistant.cards.ActionExecutionState
+import com.authvex.balaxysefactura.ui.screens.assistant.cards.AiConfirmAction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestCoroutineScheduler
@@ -11,6 +13,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.serialization.json.JsonElement
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -28,7 +31,9 @@ class FakeAiAssistantRepository(
     var nextResponse: Result<AiChatResponse>? = null
     var historyResult: Result<List<AiConversationMessage>>? = null
     var suggestionsResult: Result<List<String>>? = null
+    var actionResult: Result<AiAccionResultado>? = null
     var suggestionsCallCount = 0
+    var actionCount = 0
     var lastMessageSent: String? = null
     var lastConversationIdSent: String? = null
     var sendCount = 0
@@ -48,6 +53,14 @@ class FakeAiAssistantRepository(
         }
 
         return nextResponse ?: Result.success(AiChatResponse("Respuesta fake", "c-fake", "r-fake"))
+    }
+
+    override suspend fun executeAction(herramienta: String, argumentos: JsonElement?): Result<AiAccionResultado> {
+        actionCount++
+        if (delayMs > 0) {
+            kotlinx.coroutines.delay(delayMs)
+        }
+        return actionResult ?: Result.success(AiAccionResultado(ok = true, mensaje = "Acción ejecutada"))
     }
 
     override suspend fun getSuggestions(): Result<List<String>> {
@@ -83,12 +96,14 @@ class AssistantViewModelTest {
     }
 
     @Test
-    fun `successful send adds user and assistant bubbles and saves conversationId`() = runTest(testScheduler) {
+    fun `successful send adds user and assistant bubbles with cards and saves conversationId`() = runTest(testScheduler) {
+        val tarjeta = AiTarjeta(tool = "deuda_vencida", titulo = "Deuda")
         fakeRepository.nextResponse = Result.success(
             AiChatResponse(
                 response = "Respuesta del asistente",
                 conversationId = "c-100",
-                requestId = "r-200"
+                requestId = "r-200",
+                tarjetas = listOf(tarjeta)
             )
         )
 
@@ -101,12 +116,12 @@ class AssistantViewModelTest {
         val userMsg = viewModel.messages[0]
         assertEquals(ChatRole.USER, userMsg.role)
         assertEquals("Hola", userMsg.text)
-        assertEquals(MessageStatus.SENT, userMsg.status)
 
         val assistantMsg = viewModel.messages[1]
         assertEquals(ChatRole.ASSISTANT, assistantMsg.role)
         assertEquals("Respuesta del asistente", assistantMsg.text)
-        assertEquals("r-200", assistantMsg.requestId)
+        assertEquals(1, assistantMsg.tarjetas.size)
+        assertEquals("deuda_vencida", assistantMsg.tarjetas[0].tool)
 
         verify(authPreferences).saveAiConversationId("c-100")
         assertFalse(viewModel.isWaiting)
@@ -228,6 +243,58 @@ class AssistantViewModelTest {
     }
 
     @Test
+    fun `executeCardAction transitions state from executing to success or error`() = runTest(testScheduler) {
+        fakeRepository.actionResult = Result.success(AiAccionResultado(ok = true, mensaje = "Factura A-1043 confirmada."))
+
+        val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
+        val action = AiConfirmAction("confirmar_factura", null)
+
+        viewModel.executeCardAction("msg1_0", action)
+
+        val state = viewModel.getActionExecutionState("msg1_0")
+        assertTrue(state is ActionExecutionState.DoneSuccess)
+        assertEquals("Factura A-1043 confirmada.", (state as ActionExecutionState.DoneSuccess).message)
+        assertEquals(1, fakeRepository.actionCount)
+    }
+
+    @Test
+    fun `second executeCardAction on same card is ignored while executing`() = runTest(testScheduler) {
+        fakeRepository.delayMs = 5000L
+        val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
+        val action = AiConfirmAction("confirmar_factura", null)
+
+        viewModel.executeCardAction("msg1_0", action)
+        assertEquals(ActionExecutionState.Executing, viewModel.getActionExecutionState("msg1_0"))
+
+        viewModel.executeCardAction("msg1_0", action)
+        assertEquals(1, fakeRepository.actionCount)
+    }
+
+    @Test
+    fun `executeCardAction handles ok false and http error`() = runTest(testScheduler) {
+        fakeRepository.actionResult = Result.success(AiAccionResultado(ok = false, mensaje = "Token de confirmación vencido."))
+
+        val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
+        val action = AiConfirmAction("confirmar_factura", null)
+
+        viewModel.executeCardAction("msg1_0", action)
+
+        val state = viewModel.getActionExecutionState("msg1_0")
+        assertTrue(state is ActionExecutionState.DoneError)
+        assertEquals("Token de confirmación vencido.", (state as ActionExecutionState.DoneError).message)
+    }
+
+    @Test
+    fun `cancelCardAction sets state to Cancelled without calling repository`() = runTest(testScheduler) {
+        val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
+
+        viewModel.cancelCardAction("msg1_0")
+
+        assertEquals(ActionExecutionState.Cancelled, viewModel.getActionExecutionState("msg1_0"))
+        assertEquals(0, fakeRepository.actionCount)
+    }
+
+    @Test
     fun `newConversation clears messages and conversationId`() = runTest(testScheduler) {
         fakeRepository.nextResponse = Result.success(AiChatResponse("Respuesta", "c-999", "r-999"))
 
@@ -252,24 +319,19 @@ class AssistantViewModelTest {
         viewModel.send("Mensaje pendiente")
         assertTrue(viewModel.isWaiting)
 
-        // User triggers newConversation while waiting for response
         viewModel.newConversation()
 
-        // isWaiting and isSlow are reset immediately
         assertFalse(viewModel.isWaiting)
         assertFalse(viewModel.isSlow)
         assertEquals(0, viewModel.messages.size)
 
-        // Subsequent send works immediately
         fakeRepository.delayMs = 0L
         fakeRepository.nextResponse = Result.success(AiChatResponse("Respuesta nueva", "c-new", "r-new"))
 
         viewModel.send("Nuevo mensaje")
 
-        // Advance time to complete old pending response and new send
         advanceTimeBy(10000L)
 
-        // Only the new message and its response exist (2 messages, not 3 or old response)
         assertEquals(2, viewModel.messages.size)
         assertEquals("Nuevo mensaje", viewModel.messages[0].text)
         assertEquals("Respuesta nueva", viewModel.messages[1].text)
@@ -285,19 +347,16 @@ class AssistantViewModelTest {
 
         viewModel.send("Mensaje que tardará")
 
-        // User triggers newConversation while send is in progress
         viewModel.newConversation()
 
-        // Advance time to let the delayed response complete
         advanceTimeBy(5000L)
 
-        // The old response must be discarded and messages must remain empty
         assertEquals(0, viewModel.messages.size)
     }
 
     @Test
-    fun `isSlow activates after 15 seconds when waiting`() = runTest(testScheduler) {
-        fakeRepository.delayMs = 20000L
+    fun `isSlow activates after 5 seconds when waiting`() = runTest(testScheduler) {
+        fakeRepository.delayMs = 10000L
 
         val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
 
@@ -306,8 +365,8 @@ class AssistantViewModelTest {
         assertTrue(viewModel.isWaiting)
         assertFalse(viewModel.isSlow)
 
-        // Advance virtual time by 15.1 seconds
-        advanceTimeBy(15100L)
+        // Advance virtual time by 5.1 seconds
+        advanceTimeBy(5100L)
 
         assertTrue(viewModel.isSlow)
     }

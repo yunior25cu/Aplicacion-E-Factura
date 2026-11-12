@@ -579,7 +579,13 @@ class MainActivity : ComponentActivity() {
 
                         AssistantScreen(
                             viewModel = assistantViewModel,
-                            onNavigateBack = { navController.popBackStack() }
+                            onNavigateBack = { navController.popBackStack() },
+                            onNavigateToCfeDetail = { cfeId ->
+                                navController.navigate(Screen.CfeDetail.createRoute(cfeId))
+                            },
+                            onNavigateToCollectionDetail = { collId ->
+                                navController.navigate(Screen.CollectionDetail.createRoute(collId))
+                            }
                         )
                     }
                     if (BuildConfig.DEBUG) {
