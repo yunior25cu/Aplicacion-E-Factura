@@ -6,6 +6,9 @@ interface AiAssistantApi {
     @POST("AiAssistant/chat")
     suspend fun chat(@Body request: AiChatRequest): AiChatResponse
 
+    @POST("AiAssistant/acciones")
+    suspend fun ejecutarAccion(@Body request: AiAccionRequest): AiAccionResultado
+
     @GET("AiAssistant/suggestions")
     suspend fun suggestions(): AiSuggestionsResponse
 

@@ -1,6 +1,7 @@
 package com.authvex.balaxysefactura.core.repository
 
 import com.authvex.balaxysefactura.core.network.*
+import kotlinx.serialization.json.JsonElement
 
 open class AiAssistantRepository(
     private val aiAssistantApi: AiAssistantApi,
@@ -21,6 +22,15 @@ open class AiAssistantRepository(
 
         return try {
             val response = aiAssistantApi.chat(AiChatRequest(message = trimmed, conversationId = conversationId))
+            Result.success(response)
+        } catch (e: Exception) {
+            Result.failure(ErrorMapper.fromThrowable(e))
+        }
+    }
+
+    open suspend fun executeAction(herramienta: String, argumentos: JsonElement?): Result<AiAccionResultado> {
+        return try {
+            val response = aiAssistantApi.ejecutarAccion(AiAccionRequest(herramienta = herramienta, argumentos = argumentos))
             Result.success(response)
         } catch (e: Exception) {
             Result.failure(ErrorMapper.fromThrowable(e))

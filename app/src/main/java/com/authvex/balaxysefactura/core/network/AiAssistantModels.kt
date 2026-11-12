@@ -30,6 +30,19 @@ data class AiTarjeta(
 )
 
 @Serializable
+data class AiAccionRequest(
+    val herramienta: String,
+    val argumentos: JsonElement? = null
+)
+
+@Serializable
+data class AiAccionResultado(
+    val ok: Boolean,
+    val mensaje: String = "",
+    val datos: JsonElement? = null
+)
+
+@Serializable
 data class AiSuggestionsResponse(
     val suggestions: List<String> = emptyList()
 )

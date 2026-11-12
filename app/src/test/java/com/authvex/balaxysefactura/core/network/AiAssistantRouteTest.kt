@@ -101,6 +101,35 @@ class AiAssistantRouteTest {
     }
 
     @Test
+    fun `ejecutarAccion posts to correct route with identical json arguments`() = runBlocking {
+        val jsonResponse = """
+            {
+              "ok": true,
+              "mensaje": "Factura A-1043 confirmada correctamente.",
+              "datos": { "id_factura": 1043 }
+            }
+        """.trimIndent()
+
+        server.enqueue(MockResponse().setResponseCode(200).setBody(jsonResponse))
+
+        val rawArgs = json.parseToJsonElement("""{ "id_factura": 1043, "token_confirmacion": "bmcpc123" }""")
+        val response = aiApi.ejecutarAccion(AiAccionRequest(herramienta = "confirmar_factura", argumentos = rawArgs))
+
+        val request = server.takeRequest()
+        assertEquals("/api/v1/AiAssistant/acciones", request.path)
+        assertEquals("POST", request.method)
+
+        val requestBodyText = request.body.readUtf8()
+        val requestBodyJson = json.parseToJsonElement(requestBodyText).jsonObject
+
+        assertEquals("confirmar_factura", requestBodyJson["herramienta"]?.jsonPrimitive?.content)
+        assertEquals(rawArgs, requestBodyJson["argumentos"])
+
+        assertTrue(response.ok)
+        assertEquals("Factura A-1043 confirmada correctamente.", response.mensaje)
+    }
+
+    @Test
     fun `suggestions uses correct route`() = runBlocking {
         val jsonResponse = """
             {
