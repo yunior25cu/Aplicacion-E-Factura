@@ -28,6 +28,7 @@ class AuthPreferences(private val context: Context) {
         private val USUARIO_ID_KEY = stringPreferencesKey("usuario_id")
         private val REMEMBER_ME_KEY = booleanPreferencesKey("remember_me")
         private val SAVED_EMAIL_KEY = stringPreferencesKey("saved_email")
+        private val AI_CONVERSATION_ID_KEY = stringPreferencesKey("ai_conversation_id")
     }
 
     val session: Flow<AuthSession> = context.dataStore.data.map { preferences ->
@@ -75,6 +76,20 @@ class AuthPreferences(private val context: Context) {
 
     suspend fun getSavedEmailSync(): String? = context.dataStore.data.map { it[SAVED_EMAIL_KEY] }.first()
     suspend fun getRememberMeSync(): Boolean = context.dataStore.data.map { it[REMEMBER_ME_KEY] ?: true }.first()
+
+    suspend fun getAiConversationIdSync(): String? = context.dataStore.data.map { it[AI_CONVERSATION_ID_KEY] }.first()
+
+    suspend fun saveAiConversationId(id: String) {
+        context.dataStore.edit { preferences ->
+            preferences[AI_CONVERSATION_ID_KEY] = id
+        }
+    }
+
+    suspend fun clearAiConversationId() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(AI_CONVERSATION_ID_KEY)
+        }
+    }
 
     suspend fun clearRememberMeData() {
         context.dataStore.edit { preferences ->
