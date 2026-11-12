@@ -37,7 +37,16 @@ sealed class Screen(val route: String) {
     object ScanInbox : Screen("scan_inbox")
     object ClientCreate : Screen("client_create")
     object ProductCreate : Screen("product_create")
-    object Assistant : Screen("assistant?initialMessage={initialMessage}") {
-        fun createRoute(initialMessage: String? = null) = if (initialMessage.isNullOrBlank()) "assistant" else "assistant?initialMessage=${Uri.encode(initialMessage)}"
+    object Assistant : Screen("assistant?initialMessage={initialMessage}&newConversation={newConversation}") {
+        fun createRoute(initialMessage: String? = null, newConversation: Boolean = false): String {
+            val params = mutableListOf<String>()
+            if (!initialMessage.isNullOrBlank()) {
+                params.add("initialMessage=${Uri.encode(initialMessage)}")
+            }
+            if (newConversation) {
+                params.add("newConversation=true")
+            }
+            return if (params.isEmpty()) "assistant" else "assistant?${params.joinToString("&")}"
+        }
     }
 }

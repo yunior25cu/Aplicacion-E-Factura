@@ -5,6 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -308,11 +312,19 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         val detailViewModel: CfeDetailViewModel = viewModel(factory = factory)
+                        var assistantAvailable by remember { mutableStateOf(false) }
+                        LaunchedEffect(Unit) {
+                            assistantAvailable = aiAssistantRepository.canUseAssistant()
+                        }
                         CfeDetailScreen(
                             viewModel = detailViewModel,
                             onBack = { navController.popBackStack() },
                             onCollectInvoice = { facturaId ->
                                 navController.navigate(Screen.CollectionForm.createRoute(facturaIdInitial = facturaId))
+                            },
+                            assistantAvailable = assistantAvailable,
+                            onAskAssistant = { msg ->
+                                navController.navigate(Screen.Assistant.createRoute(msg, newConversation = true))
                             }
                         )
                     }
@@ -347,10 +359,18 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         val detailViewModel: CollectionDetailViewModel = viewModel(factory = factory)
+                        var assistantAvailable by remember { mutableStateOf(false) }
+                        LaunchedEffect(Unit) {
+                            assistantAvailable = aiAssistantRepository.canUseAssistant()
+                        }
                         CollectionDetailScreen(
                             viewModel = detailViewModel,
                             cfeRepository = cfeRepository,
-                            onNavigateBack = { navController.popBackStack() }
+                            onNavigateBack = { navController.popBackStack() },
+                            assistantAvailable = assistantAvailable,
+                            onAskAssistant = { msg ->
+                                navController.navigate(Screen.Assistant.createRoute(msg, newConversation = true))
+                            }
                         )
                     }
                     composable(
@@ -565,14 +585,24 @@ class MainActivity : ComponentActivity() {
                                 type = NavType.StringType
                                 nullable = true
                                 defaultValue = null
+                            },
+                            navArgument("newConversation") {
+                                type = NavType.BoolType
+                                defaultValue = false
                             }
                         )
                     ) { backStackEntry ->
                         val initMsg = backStackEntry.arguments?.getString("initialMessage")
+                        val startNewConv = backStackEntry.arguments?.getBoolean("newConversation") ?: false
                         val assistantFactory = object : ViewModelProvider.Factory {
                             @Suppress("UNCHECKED_CAST")
                             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                return AssistantViewModel(aiAssistantRepository, authPreferences, initMsg) as T
+                                return AssistantViewModel(
+                                    repository = aiAssistantRepository,
+                                    authPreferences = authPreferences,
+                                    initialMessage = initMsg,
+                                    startNewConversation = startNewConv
+                                ) as T
                             }
                         }
                         val assistantViewModel: AssistantViewModel = viewModel(factory = assistantFactory)

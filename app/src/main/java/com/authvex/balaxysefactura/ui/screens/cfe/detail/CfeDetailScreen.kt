@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -21,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.authvex.balaxysefactura.core.network.CfeDetailDto
+import com.authvex.balaxysefactura.ui.screens.assistant.buildCfeAssistantPrompt
 import com.authvex.balaxysefactura.ui.screens.cfe.list.StatusChip
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -28,7 +30,9 @@ import com.authvex.balaxysefactura.ui.screens.cfe.list.StatusChip
 fun CfeDetailScreen(
     viewModel: CfeDetailViewModel,
     onBack: () -> Unit,
-    onCollectInvoice: (Long) -> Unit = {}
+    onCollectInvoice: (Long) -> Unit = {},
+    assistantAvailable: Boolean = false,
+    onAskAssistant: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val uiState = viewModel.uiState
@@ -51,6 +55,17 @@ fun CfeDetailScreen(
                     }
                 },
                 actions = {
+                    if (assistantAvailable && uiState is CfeDetailUiState.Success) {
+                        IconButton(
+                            onClick = { onAskAssistant(buildCfeAssistantPrompt(uiState.document)) }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = "Preguntar al asistente",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                     IconButton(
                         onClick = { viewModel.shareCfePdf(context) },
                         enabled = !viewModel.isSharingPdf

@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Receipt
@@ -23,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.authvex.balaxysefactura.core.network.CobroDetailDto
 import com.authvex.balaxysefactura.core.repository.CfeRepository
+import com.authvex.balaxysefactura.ui.screens.assistant.buildCollectionAssistantPrompt
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -30,7 +32,9 @@ import java.util.Locale
 fun CollectionDetailScreen(
     viewModel: CollectionDetailViewModel,
     cfeRepository: CfeRepository? = null,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    assistantAvailable: Boolean = false,
+    onAskAssistant: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val uiState = viewModel.uiState
@@ -59,6 +63,19 @@ fun CollectionDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Regresar")
+                    }
+                },
+                actions = {
+                    if (assistantAvailable && uiState is CollectionDetailUiState.Success) {
+                        IconButton(
+                            onClick = { onAskAssistant(buildCollectionAssistantPrompt(uiState.collection)) }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = "Preguntar al asistente",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
