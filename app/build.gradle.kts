@@ -49,11 +49,16 @@ android {
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-dev"
             buildConfigField("String", "BASE_URL", "\"https://pymecontaapidev-dkfsauabatf2bjh2.canadacentral-01.azurewebsites.net/api/v1/\"")
+            buildConfigField("Boolean", "AI_ASSISTANT_ENABLED", "true")
+            buildConfigField("String", "WEB_BASE_URL", "\"https://nice-ocean-0b5c5570f.5.azurestaticapps.net\"")
             resValue("string", "app_name", "Balaxys DEV")
         }
         create("prod") {
             dimension = "version"
             buildConfigField("String", "BASE_URL", "\"https://pymecontaapi-gngaeuade8g7ducy.canadacentral-01.azurewebsites.net/api/v1/\"")
+            buildConfigField("Boolean", "AI_ASSISTANT_ENABLED", "false")
+            // TODO: URL base web de producción para la Fase 2
+            buildConfigField("String", "WEB_BASE_URL", "\"\"")
             resValue("string", "app_name", "Balaxys Efactura")
         }
     }
@@ -125,6 +130,7 @@ dependencies {
     implementation(libs.okhttp.logging)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.play.services.mlkit.document.scanner)
+    implementation(libs.markdown.renderer.m3)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
