@@ -36,6 +36,15 @@ open class AiAssistantRepository(
         }
     }
 
+    open suspend fun getMessages(conversationId: String): Result<List<AiConversationMessage>> {
+        return try {
+            val list = aiAssistantApi.messages(conversationId)
+            Result.success(list)
+        } catch (e: Exception) {
+            Result.failure(ErrorMapper.fromThrowable(e))
+        }
+    }
+
     open suspend fun canUseAssistant(): Boolean {
         if (!enabled) return false
         cachedCanUse?.let { return it }

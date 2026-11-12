@@ -35,6 +35,15 @@ data class AiSuggestionsResponse(
 )
 
 @Serializable
+data class AiConversationMessage(
+    val role: String,
+    val content: String,
+    val toolsUsed: List<String>? = null,
+    val durationMs: Int? = null,
+    val createdAt: String = ""
+)
+
+@Serializable
 data class AccessProfile(
     val capabilities: List<String> = emptyList(),
     val addons: List<String> = emptyList(),

@@ -3,6 +3,7 @@ package com.authvex.balaxysefactura.core.repository
 import com.authvex.balaxysefactura.core.network.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -50,6 +51,24 @@ class AiAssistantRepositoryTest {
         assertTrue(error is AppError.Validation)
         assertEquals("El mensaje no puede superar los 10.000 caracteres", error?.message)
         verify(aiAssistantApi, never()).chat(any())
+    }
+
+    @Test
+    fun `getMessages returns success and fails with ErrorMapper`() = runTest {
+        val messagesList = listOf(AiConversationMessage("user", "Hola"))
+        whenever(aiAssistantApi.messages("c123")).thenReturn(messagesList)
+
+        val repo = AiAssistantRepository(aiAssistantApi, accessApi, enabled = true)
+
+        val successRes = repo.getMessages("c123")
+        assertTrue(successRes.isSuccess)
+        assertEquals(1, successRes.getOrNull()?.size)
+
+        val errorResponse = retrofit2.Response.error<List<AiConversationMessage>>(503, "{\"mensaje\":\"Servicio no disponible\"}".toResponseBody())
+        whenever(aiAssistantApi.messages("c454")).thenThrow(retrofit2.HttpException(errorResponse))
+        val failRes = repo.getMessages("c454")
+        assertTrue(failRes.isFailure)
+        assertTrue(failRes.exceptionOrNull() is AppError.ServerError)
     }
 
     @Test

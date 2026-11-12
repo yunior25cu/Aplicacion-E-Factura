@@ -8,4 +8,7 @@ interface AiAssistantApi {
 
     @GET("AiAssistant/suggestions")
     suspend fun suggestions(): AiSuggestionsResponse
+
+    @GET("AiAssistant/conversations/{conversationId}/messages")
+    suspend fun messages(@Path("conversationId") conversationId: String): List<AiConversationMessage>
 }

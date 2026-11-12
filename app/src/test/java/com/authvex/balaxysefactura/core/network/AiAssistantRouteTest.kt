@@ -121,6 +121,43 @@ class AiAssistantRouteTest {
     }
 
     @Test
+    fun `messages uses correct route with encoded conversationId and deserializes list with extra fields`() = runBlocking {
+        val jsonResponse = """
+            [
+              {
+                "role": "user",
+                "content": "Hola",
+                "createdAt": "2026-10-10T10:00:00Z",
+                "extraField": "unused"
+              },
+              {
+                "role": "assistant",
+                "content": "Hola, ¿en qué puedo ayudarte?",
+                "toolsUsed": ["deuda_vencida"],
+                "durationMs": 1500,
+                "createdAt": "2026-10-10T10:00:01Z"
+              }
+            ]
+        """.trimIndent()
+
+        server.enqueue(MockResponse().setResponseCode(200).setBody(jsonResponse))
+
+        val conversationIdWithSpecialChars = "conv/123-abc"
+        val response = aiApi.messages(conversationIdWithSpecialChars)
+
+        val request = server.takeRequest()
+        assertEquals("/api/v1/AiAssistant/conversations/conv%2F123-abc/messages", request.path)
+        assertEquals("GET", request.method)
+
+        assertEquals(2, response.size)
+        assertEquals("user", response[0].role)
+        assertEquals("Hola", response[0].content)
+        assertEquals("assistant", response[1].role)
+        assertEquals("Hola, ¿en qué puedo ayudarte?", response[1].content)
+        assertEquals(listOf("deuda_vencida"), response[1].toolsUsed)
+    }
+
+    @Test
     fun `access me uses correct route and parses profile with extra fields`() = runBlocking {
         val jsonResponse = """
             {
