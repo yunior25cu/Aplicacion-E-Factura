@@ -111,12 +111,12 @@ class AssistantViewModel(
     }
 
     fun getActionExecutionState(actionKey: String): ActionExecutionState {
-        return actionStates[actionKey] ?: ActionExecutionState.Pending
+        return actionStates[actionKey] ?: ActionExecutionState.Pending()
     }
 
     fun executeCardAction(actionKey: String, action: AiConfirmAction) {
         val currentState = getActionExecutionState(actionKey)
-        if (currentState == ActionExecutionState.Executing) return
+        if (currentState !is ActionExecutionState.Pending) return
 
         actionStates = actionStates + (actionKey to ActionExecutionState.Executing)
 
@@ -132,7 +132,7 @@ class AssistantViewModel(
             }.onFailure { throwable ->
                 val appError = ErrorMapper.fromThrowable(throwable)
                 val errMsg = appError.getDisplayMessage()
-                actionStates = actionStates + (actionKey to ActionExecutionState.DoneError(errMsg))
+                actionStates = actionStates + (actionKey to ActionExecutionState.Pending(errMsg))
             }
         }
     }

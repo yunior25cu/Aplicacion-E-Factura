@@ -271,8 +271,32 @@ class AssistantViewModelTest {
     }
 
     @Test
-    fun `executeCardAction handles ok false and http error`() = runTest(testScheduler) {
-        fakeRepository.actionResult = Result.success(AiAccionResultado(ok = false, mensaje = "Token de confirmación vencido."))
+    fun `executeCardAction on http error returns to Pending with error message and allows retry`() = runTest(testScheduler) {
+        fakeRepository.actionResult = Result.failure(AppError.Forbidden(detail = "El token de confirmación venció o ya fue usado."))
+
+        val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
+        val action = AiConfirmAction("confirmar_factura", null)
+
+        viewModel.executeCardAction("msg1_0", action)
+
+        val firstState = viewModel.getActionExecutionState("msg1_0")
+        assertTrue(firstState is ActionExecutionState.Pending)
+        assertEquals("El token de confirmación venció o ya fue usado.", (firstState as ActionExecutionState.Pending).errorMessage)
+        assertEquals(1, fakeRepository.actionCount)
+
+        // Second attempt calls repository again and succeeds
+        fakeRepository.actionResult = Result.success(AiAccionResultado(ok = true, mensaje = "Factura confirmada."))
+        viewModel.executeCardAction("msg1_0", action)
+
+        val secondState = viewModel.getActionExecutionState("msg1_0")
+        assertTrue(secondState is ActionExecutionState.DoneSuccess)
+        assertEquals("Factura confirmada.", (secondState as ActionExecutionState.DoneSuccess).message)
+        assertEquals(2, fakeRepository.actionCount)
+    }
+
+    @Test
+    fun `executeCardAction on ok false sets DoneError and does not allow retry`() = runTest(testScheduler) {
+        fakeRepository.actionResult = Result.success(AiAccionResultado(ok = false, mensaje = "La factura ya estaba confirmada."))
 
         val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
         val action = AiConfirmAction("confirmar_factura", null)
@@ -281,7 +305,15 @@ class AssistantViewModelTest {
 
         val state = viewModel.getActionExecutionState("msg1_0")
         assertTrue(state is ActionExecutionState.DoneError)
-        assertEquals("Token de confirmación vencido.", (state as ActionExecutionState.DoneError).message)
+        assertEquals("La factura ya estaba confirmada.", (state as ActionExecutionState.DoneError).message)
+        assertEquals(1, fakeRepository.actionCount)
+
+        // Attempting to execute again is ignored when in DoneError
+        fakeRepository.actionResult = Result.success(AiAccionResultado(ok = true, mensaje = "No debería ejecutarse"))
+        viewModel.executeCardAction("msg1_0", action)
+
+        assertEquals(1, fakeRepository.actionCount)
+        assertTrue(viewModel.getActionExecutionState("msg1_0") is ActionExecutionState.DoneError)
     }
 
     @Test

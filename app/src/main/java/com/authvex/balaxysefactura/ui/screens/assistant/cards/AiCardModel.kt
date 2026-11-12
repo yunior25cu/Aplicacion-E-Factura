@@ -45,7 +45,7 @@ data class AiCardModel(
     val confirmAction: AiConfirmAction? = null
 )
 
-private val hiddenKeyRegex = Regex("(?i)^(titulo|token_confirmacion|confirmar_con|url_erp|id(_.*)?)$")
+private val hiddenKeyRegex = Regex("(?i)^(titulo|nota|token_confirmacion|confirmar_con|url_erp|id(_.*)?)$")
 private val alertKeySet = setOf("novedades", "alertas", "alertas_contables")
 
 fun formatKeyLabel(key: String): String {
@@ -167,11 +167,10 @@ fun buildCard(tarjeta: AiTarjeta): AiCardModel {
                         }
                     }
 
-                    val noteInDatos = datosObj["nota"]?.jsonPrimitive?.contentOrNull
-                    val footer = when {
-                        noteInDatos != null -> noteInDatos
-                        objList.size > 20 -> "Mostrando 20 de ${objList.size}"
-                        else -> null
+                    val footer = if (objList.size > 20) {
+                        "Mostrando 20 de ${objList.size}"
+                    } else {
+                        null
                     }
 
                     table = AiCardTable(headers, visibleKeys, limitedRows, footer)

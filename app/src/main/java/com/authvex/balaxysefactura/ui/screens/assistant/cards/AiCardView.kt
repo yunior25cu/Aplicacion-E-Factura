@@ -15,15 +15,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.authvex.balaxysefactura.ui.screens.assistant.isNumericCell
+import com.authvex.balaxysefactura.ui.screens.assistant.SharedTableView
 
 sealed class ActionExecutionState {
-    object Pending : ActionExecutionState()
+    data class Pending(val errorMessage: String? = null) : ActionExecutionState()
     object Executing : ActionExecutionState()
     data class DoneSuccess(val message: String) : ActionExecutionState()
     data class DoneError(val message: String) : ActionExecutionState()
@@ -180,16 +180,28 @@ fun AiCardView(
             model.confirmAction?.let {
                 when (executionState) {
                     is ActionExecutionState.Pending -> {
-                        Row(
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            TextButton(onClick = onCancel) {
-                                Text("Cancelar")
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                TextButton(onClick = onCancel) {
+                                    Text("Cancelar")
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(onClick = { showConfirmDialog = true }) {
+                                    Text("Confirmar")
+                                }
                             }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Button(onClick = { showConfirmDialog = true }) {
-                                Text("Confirmar")
+                            if (!executionState.errorMessage.isNullOrBlank()) {
+                                Text(
+                                    text = executionState.errorMessage,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
                             }
                         }
                     }
@@ -264,90 +276,21 @@ fun AiCardView(
 
 @Composable
 fun AiCardTableView(tbl: AiCardTable) {
-    val scrollState = rememberScrollState()
-    val borderColor = MaterialTheme.colorScheme.outlineVariant
-
-    // Measure maximum width required per column across ALL rows including headers
-    val colWidths = remember(tbl) {
-        tbl.headers.mapIndexed { colIdx, header ->
-            var maxChars = header.length
-            tbl.rows.forEach { row ->
-                val cell = row.getOrNull(colIdx) ?: ""
-                if (cell.length > maxChars) {
-                    maxChars = cell.length
-                }
-            }
-            // Map character count to dp width (min 56dp, max 220dp)
-            val estimatedDp = (maxChars * 8 + 24).dp
-            estimatedDp.coerceIn(56.dp, 220.dp)
-        }
+    val annotatedHeaders = remember(tbl.headers) {
+        tbl.headers.map { AnnotatedString(it) }
+    }
+    val annotatedRows = remember(tbl.rows) {
+        tbl.rows.map { row -> row.map { AnnotatedString(it) } }
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(scrollState)
-                .border(1.dp, borderColor, RoundedCornerShape(8.dp))
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color.White)
-                .padding(6.dp)
-        ) {
-            Column {
-                // Header Row
-                Row(
-                    modifier = Modifier
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                        .padding(vertical = 6.dp)
-                ) {
-                    tbl.headers.forEachIndexed { colIdx, header ->
-                        val isNum = isNumericCell(header)
-                        val widthDp = colWidths.getOrElse(colIdx) { 90.dp }
-
-                        Box(
-                            modifier = Modifier
-                                .width(widthDp)
-                                .padding(horizontal = 6.dp),
-                            contentAlignment = if (isNum) Alignment.CenterEnd else Alignment.CenterStart
-                        ) {
-                            Text(
-                                text = header,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-
-                HorizontalDivider(color = borderColor, thickness = 1.dp)
-
-                // Rows
-                tbl.rows.forEachIndexed { rowIndex, row ->
-                    Row(modifier = Modifier.padding(vertical = 6.dp)) {
-                        tbl.headers.indices.forEach { colIdx ->
-                            val cellText = row.getOrNull(colIdx) ?: ""
-                            val isNum = isNumericCell(cellText)
-                            val widthDp = colWidths.getOrElse(colIdx) { 90.dp }
-
-                            Box(
-                                modifier = Modifier
-                                    .width(widthDp)
-                                    .padding(horizontal = 6.dp),
-                                contentAlignment = if (isNum) Alignment.CenterEnd else Alignment.CenterStart
-                            ) {
-                                Text(
-                                    text = cellText,
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp)
-                                )
-                            }
-                        }
-                    }
-                    if (rowIndex < tbl.rows.size - 1) {
-                        HorizontalDivider(color = borderColor.copy(alpha = 0.5f), thickness = 0.5.dp)
-                    }
-                }
-            }
-        }
+        SharedTableView(
+            headers = annotatedHeaders,
+            rows = annotatedRows,
+            headerStyle = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+            cellStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+            textColor = MaterialTheme.colorScheme.onSurface
+        )
 
         if (!tbl.footerText.isNullOrBlank()) {
             Text(

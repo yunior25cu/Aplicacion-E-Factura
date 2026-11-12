@@ -13,6 +13,7 @@ class AiCardModelTest {
             put("titulo", "Deuda Vencida")
             put("id_cliente", 436)
             put("token_confirmacion", "secret-token")
+            put("nota", "Se muestran 20 de 94. Usa filtros o aumenta 'limite' (max 50).")
             put("total_por_cobrar", 1524963.2)
             put("moneda", "UYU")
             put("activo", true)
@@ -32,10 +33,11 @@ class AiCardModelTest {
         assertEquals("Total por cobrar", card.kpis[0].label)
         assertEquals("1.524.963,2", card.kpis[0].value)
 
-        // Verify Summaries (id_cliente, token_confirmacion, url_erp hidden)
+        // Verify Summaries (id_cliente, token_confirmacion, nota, url_erp hidden)
         val summaryKeys = card.summaries.map { it.label }
         assertFalse(summaryKeys.contains("Id cliente"))
         assertFalse(summaryKeys.contains("Token confirmacion"))
+        assertFalse(summaryKeys.contains("Nota"))
         assertFalse(summaryKeys.contains("Url erp"))
 
         val monedaItem = card.summaries.find { it.label == "Moneda" }
@@ -68,6 +70,7 @@ class AiCardModelTest {
         }
 
         val jsonDatos = buildJsonObject {
+            put("nota", "Se muestran 20 de 94. Usa filtros o aumenta 'limite' (max 50).")
             put("clientes", JsonArray(clientItems))
         }
 
@@ -82,6 +85,28 @@ class AiCardModelTest {
         assertEquals(20, tbl.rows.size)
         assertEquals("Mostrando 20 de 25", tbl.footerText)
         assertEquals("1.000", tbl.rows[0][1]) // es-UY number format
+    }
+
+    @Test
+    fun `buildCard hides nota from table footer when rows are 20 or fewer`() {
+        val clientItems = (1..20).map { idx ->
+            buildJsonObject {
+                put("cliente", "Cliente $idx")
+                put("por_cobrar", idx * 1000.0)
+            }
+        }
+
+        val jsonDatos = buildJsonObject {
+            put("nota", "Se muestran 20 de 94. Usa filtros o aumenta 'limite' (max 50).")
+            put("clientes", JsonArray(clientItems))
+        }
+
+        val tarjeta = AiTarjeta(tool = "cuentas_por_cobrar", datos = jsonDatos)
+        val card = buildCard(tarjeta)
+
+        assertNotNull(card.table)
+        assertNull(card.table!!.footerText)
+        assertTrue(card.summaries.none { it.label.equals("Nota", ignoreCase = true) })
     }
 
     @Test
