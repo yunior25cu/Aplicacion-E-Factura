@@ -10,6 +10,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -20,7 +21,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 sealed class MdBlock {
     data class Header(val level: Int, val text: String) : MdBlock()
@@ -29,6 +29,7 @@ sealed class MdBlock {
     data class OrderedItem(val number: String, val text: String) : MdBlock()
     data class CodeBlock(val text: String) : MdBlock()
     data class Table(val headers: List<String>, val rows: List<List<String>>) : MdBlock()
+    object Divider : MdBlock()
 }
 
 @Composable
@@ -91,6 +92,12 @@ fun SimpleMarkdown(
                 is MdBlock.Table -> {
                     TableBlock(headers = block.headers, rows = block.rows, textColor = color)
                 }
+                is MdBlock.Divider -> {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 4.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+                }
             }
         }
     }
@@ -100,6 +107,20 @@ fun SimpleMarkdown(
 private fun TableBlock(headers: List<String>, rows: List<List<String>>, textColor: Color) {
     val scrollState = rememberScrollState()
     val borderColor = MaterialTheme.colorScheme.outlineVariant
+
+    val colWidths = remember(headers, rows) {
+        headers.mapIndexed { colIdx, header ->
+            var maxChars = header.length
+            rows.forEach { row ->
+                val cell = row.getOrNull(colIdx) ?: ""
+                if (cell.length > maxChars) {
+                    maxChars = cell.length
+                }
+            }
+            val estimatedDp = (maxChars * 8 + 24).dp
+            estimatedDp.coerceIn(56.dp, 220.dp)
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -117,11 +138,12 @@ private fun TableBlock(headers: List<String>, rows: List<List<String>>, textColo
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                     .padding(vertical = 6.dp)
             ) {
-                headers.forEach { header ->
+                headers.forEachIndexed { colIdx, header ->
+                    val widthDp = colWidths.getOrElse(colIdx) { 90.dp }
                     Box(
                         modifier = Modifier
-                            .widthIn(min = 90.dp)
-                            .padding(horizontal = 8.dp),
+                            .width(widthDp)
+                            .padding(horizontal = 6.dp),
                         contentAlignment = if (isNumericCell(header)) Alignment.CenterEnd else Alignment.CenterStart
                     ) {
                         Text(
@@ -144,10 +166,12 @@ private fun TableBlock(headers: List<String>, rows: List<List<String>>, textColo
                     headers.indices.forEach { colIndex ->
                         val cellText = row.getOrNull(colIndex) ?: ""
                         val isNum = isNumericCell(cellText)
+                        val widthDp = colWidths.getOrElse(colIndex) { 90.dp }
+
                         Box(
                             modifier = Modifier
-                                .widthIn(min = 90.dp)
-                                .padding(horizontal = 8.dp),
+                                .width(widthDp)
+                                .padding(horizontal = 6.dp),
                             contentAlignment = if (isNum) Alignment.CenterEnd else Alignment.CenterStart
                         ) {
                             Text(
@@ -229,6 +253,12 @@ fun parseMarkdownBlocks(text: String): List<MdBlock> {
 
         if (inCodeBlock) {
             codeLines.add(line)
+            continue
+        }
+
+        if (trimmed.matches(Regex("^(-{3,}|\\*{3,}|_{3,})$"))) {
+            flushTable()
+            blocks.add(MdBlock.Divider)
             continue
         }
 
