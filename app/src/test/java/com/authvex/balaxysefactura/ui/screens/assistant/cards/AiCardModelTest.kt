@@ -156,7 +156,35 @@ class AiCardModelTest {
         val card = buildCard(tarjeta)
 
         assertNotNull(card.confirmAction)
+        assertFalse(card.isExpiredAction)
         assertEquals("confirmar_factura", card.confirmAction?.herramienta)
         assertEquals(1043, card.confirmAction?.argumentos?.jsonObject?.get("id_factura")?.jsonPrimitive?.int)
+    }
+
+    @Test
+    fun `buildCard with confirmacion_vencida sets isExpiredAction true, has no confirmAction and hides key from summaries`() {
+        val jsonDatos = buildJsonObject {
+            put("id_factura", 10)
+            put("total", 122)
+            put("cliente", "EL SANTORAL")
+            put("confirmacion_vencida", true)
+        }
+
+        val tarjeta = AiTarjeta(
+            tool = "preparar_emision_cfe",
+            titulo = "Emitir CFE",
+            datos = jsonDatos
+        )
+        val card = buildCard(tarjeta)
+
+        assertTrue(card.isExpiredAction)
+        assertNull(card.confirmAction)
+        assertEquals(1, card.kpis.size)
+        assertEquals("Total", card.kpis[0].label)
+        assertEquals("122", card.kpis[0].value)
+        assertEquals(1, card.summaries.size)
+        assertEquals("Cliente", card.summaries[0].label)
+        assertEquals("EL SANTORAL", card.summaries[0].value)
+        assertTrue(card.summaries.none { it.label.contains("Confirmacion", ignoreCase = true) })
     }
 }

@@ -57,13 +57,34 @@ fun AiCardView(
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Header Title
-            Text(
-                text = model.title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
+            // Header Title + Optional Chip
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = model.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
+                )
+                if (model.isExpiredAction) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = "Conversación anterior",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
 
             // Alerts
             if (model.alerts.isNotEmpty()) {
@@ -176,76 +197,84 @@ fun AiCardView(
                 }
             }
 
-            // Confirm Action Controls
-            model.confirmAction?.let {
-                when (executionState) {
-                    is ActionExecutionState.Pending -> {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Row(
+            // Expired Action Notice or Confirm Action Controls
+            if (model.isExpiredAction) {
+                Text(
+                    text = "Esta acción se preparó en una conversación anterior y ya no se puede confirmar desde acá. Si todavía querés hacerla, pedísela de nuevo al asistente.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                model.confirmAction?.let {
+                    when (executionState) {
+                        is ActionExecutionState.Pending -> {
+                            Column(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                TextButton(onClick = onCancel) {
-                                    Text("Cancelar")
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    TextButton(onClick = onCancel) {
+                                        Text("Cancelar")
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Button(onClick = { showConfirmDialog = true }) {
+                                        Text("Confirmar")
+                                    }
                                 }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Button(onClick = { showConfirmDialog = true }) {
-                                    Text("Confirmar")
+                                if (!executionState.errorMessage.isNullOrBlank()) {
+                                    Text(
+                                        text = executionState.errorMessage,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
                                 }
                             }
-                            if (!executionState.errorMessage.isNullOrBlank()) {
+                        }
+                        is ActionExecutionState.Executing -> {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Ejecutando acción...", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        is ActionExecutionState.DoneSuccess -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = executionState.errorMessage,
+                                    text = executionState.message.ifBlank { "Acción ejecutada correctamente." },
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error
+                                    color = Color(0xFF2E7D32),
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             }
                         }
-                    }
-                    is ActionExecutionState.Executing -> {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Ejecutando acción...", style = MaterialTheme.typography.bodySmall)
+                        is ActionExecutionState.DoneError -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = executionState.message.ifBlank { "Error al ejecutar acción." },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
-                    }
-                    is ActionExecutionState.DoneSuccess -> {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
+                        is ActionExecutionState.Cancelled -> {
                             Text(
-                                text = executionState.message.ifBlank { "Acción ejecutada correctamente." },
+                                text = "Cancelado. No se hizo ningún cambio.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF2E7D32),
-                                fontWeight = FontWeight.SemiBold
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                    }
-                    is ActionExecutionState.DoneError -> {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = executionState.message.ifBlank { "Error al ejecutar acción." },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-                    is ActionExecutionState.Cancelled -> {
-                        Text(
-                            text = "Cancelado. No se hizo ningún cambio.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
             }

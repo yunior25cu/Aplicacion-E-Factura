@@ -42,10 +42,11 @@ data class AiCardModel(
     val alerts: List<AlertItem> = emptyList(),
     val table: AiCardTable? = null,
     val erpUrl: String? = null,
-    val confirmAction: AiConfirmAction? = null
+    val confirmAction: AiConfirmAction? = null,
+    val isExpiredAction: Boolean = false
 )
 
-private val hiddenKeyRegex = Regex("(?i)^(titulo|nota|token_confirmacion|confirmar_con|url_erp|id(_.*)?)$")
+private val hiddenKeyRegex = Regex("(?i)^(titulo|nota|token_confirmacion|confirmar_con|confirmacion_vencida|url_erp|id(_.*)?)$")
 private val alertKeySet = setOf("novedades", "alertas", "alertas_contables")
 
 fun formatKeyLabel(key: String): String {
@@ -86,6 +87,9 @@ fun buildCard(tarjeta: AiTarjeta): AiCardModel {
         val args = confirmObj?.get("argumentos")
         if (toolName != null) AiConfirmAction(toolName, args) else null
     }
+
+    val isExpiredAction = confirmAction == null &&
+        (datosObj["confirmacion_vencida"] as? JsonPrimitive)?.booleanOrNull == true
 
     val kpis = mutableListOf<KpiItem>()
     val summaries = mutableListOf<SummaryItem>()
@@ -207,6 +211,7 @@ fun buildCard(tarjeta: AiTarjeta): AiCardModel {
         alerts = alerts,
         table = table,
         erpUrl = erpUrl,
-        confirmAction = confirmAction
+        confirmAction = confirmAction,
+        isExpiredAction = isExpiredAction
     )
 }
