@@ -1,5 +1,9 @@
 package com.authvex.balaxysefactura.ui.screens.assistant
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.*
 import org.junit.Test
@@ -224,5 +228,108 @@ class SimpleMarkdownTest {
         assertEquals(2, result.columnWidths.size)
         assertEquals(150.dp, result.columnWidths[0])
         assertEquals(95.dp, result.columnWidths[1])
+    }
+
+    @Test
+    fun `parseInlineMarkdown parses links in paragraph and bullet item with LinkAnnotation Url and underline primary style`() {
+        val markdown = """
+            Podés revisar el detalle en [Ver cliente en Balaxys](https://dev.balaxys.com/clients/details_client/337).
+            - Ítem con [Ver factura](http://dev.balaxys.com/clients/details_sale/10)
+        """.trimIndent()
+
+        val blocks = parseMarkdownBlocks(markdown)
+        assertEquals(2, blocks.size)
+        assertTrue(blocks[0] is MdBlock.Paragraph)
+        assertTrue(blocks[1] is MdBlock.BulletItem)
+
+        val primaryColor = Color(0xFF0055AA)
+        val paragraphAnnotated = parseInlineMarkdown((blocks[0] as MdBlock.Paragraph).text, linkColor = primaryColor)
+        assertEquals("Podés revisar el detalle en Ver cliente en Balaxys.", paragraphAnnotated.text)
+
+        val pLinks = paragraphAnnotated.getLinkAnnotations(0, paragraphAnnotated.length)
+        assertEquals(1, pLinks.size)
+        val pLink = pLinks[0].item as LinkAnnotation.Url
+        assertEquals("https://dev.balaxys.com/clients/details_client/337", pLink.url)
+        assertEquals("Ver cliente en Balaxys", paragraphAnnotated.text.substring(pLinks[0].start, pLinks[0].end))
+        assertEquals(primaryColor, pLink.styles?.style?.color)
+        assertEquals(TextDecoration.Underline, pLink.styles?.style?.textDecoration)
+
+        val bulletAnnotated = parseInlineMarkdown((blocks[1] as MdBlock.BulletItem).text, linkColor = primaryColor)
+        assertEquals("Ítem con Ver factura", bulletAnnotated.text)
+
+        val bLinks = bulletAnnotated.getLinkAnnotations(0, bulletAnnotated.length)
+        assertEquals(1, bLinks.size)
+        val bLink = bLinks[0].item as LinkAnnotation.Url
+        assertEquals("http://dev.balaxys.com/clients/details_sale/10", bLink.url)
+        assertEquals("Ver factura", bulletAnnotated.text.substring(bLinks[0].start, bLinks[0].end))
+    }
+
+    @Test
+    fun `parseInlineMarkdown renders non-http schemes as plain text without link`() {
+        val jsAnnotated = parseInlineMarkdown("Hacé clic en [Ejecutar](javascript:alert(1)) ahora")
+        assertEquals("Hacé clic en Ejecutar ahora", jsAnnotated.text)
+        assertTrue(jsAnnotated.getLinkAnnotations(0, jsAnnotated.length).isEmpty())
+
+        val mailtoAnnotated = parseInlineMarkdown("Escribí a [Soporte](mailto:soporte@balaxys.com)")
+        assertEquals("Escribí a Soporte", mailtoAnnotated.text)
+        assertTrue(mailtoAnnotated.getLinkAnnotations(0, mailtoAnnotated.length).isEmpty())
+    }
+
+    @Test
+    fun `parseInlineMarkdown supports link with bold text around it`() {
+        val annotated = parseInlineMarkdown(
+            "**Cliente:** [Ver cliente en Balaxys](https://dev.balaxys.com/clients/details_client/337) (**activo**)"
+        )
+        assertEquals("Cliente: Ver cliente en Balaxys (activo)", annotated.text)
+
+        val links = annotated.getLinkAnnotations(0, annotated.length)
+        assertEquals(1, links.size)
+        val link = links[0].item as LinkAnnotation.Url
+        assertEquals("https://dev.balaxys.com/clients/details_client/337", link.url)
+        assertEquals("Ver cliente en Balaxys", annotated.text.substring(links[0].start, links[0].end))
+
+        val boldRanges = annotated.spanStyles.filter { it.item.fontWeight == FontWeight.Bold }
+        assertEquals(2, boldRanges.size)
+        assertEquals("Cliente:", annotated.text.substring(boldRanges[0].start, boldRanges[0].end))
+        assertEquals("activo", annotated.text.substring(boldRanges[1].start, boldRanges[1].end))
+    }
+
+    @Test
+    fun `parseMarkdownBlocks parses single-line and multi-line quotes without greater-than prefix`() {
+        val singleQuoteMd = "> Nota sobre el saldo pendiente"
+        val singleBlocks = parseMarkdownBlocks(singleQuoteMd)
+        assertEquals(1, singleBlocks.size)
+        assertTrue(singleBlocks[0] is MdBlock.Quote)
+        assertEquals("Nota sobre el saldo pendiente", (singleBlocks[0] as MdBlock.Quote).text)
+
+        val multiQuoteMd = """
+            > Primera línea de la cita
+            > Segunda línea de la cita
+            Párrafo posterior.
+        """.trimIndent()
+        val multiBlocks = parseMarkdownBlocks(multiQuoteMd)
+        assertEquals(2, multiBlocks.size)
+        assertTrue(multiBlocks[0] is MdBlock.Quote)
+        assertEquals(
+            "Primera línea de la cita\nSegunda línea de la cita",
+            (multiBlocks[0] as MdBlock.Quote).text
+        )
+        assertTrue(multiBlocks[1] is MdBlock.Paragraph)
+        assertEquals("Párrafo posterior.", (multiBlocks[1] as MdBlock.Paragraph).text)
+    }
+
+    @Test
+    fun `greater-than line inside code block is not parsed as Quote`() {
+        val markdown = """
+            ```
+            > esto está en un bloque de código
+            ```
+        """.trimIndent()
+
+        val blocks = parseMarkdownBlocks(markdown)
+        assertEquals(1, blocks.size)
+        assertTrue(blocks[0] is MdBlock.CodeBlock)
+        assertFalse(blocks.any { it is MdBlock.Quote })
+        assertEquals("> esto está en un bloque de código", (blocks[0] as MdBlock.CodeBlock).text)
     }
 }

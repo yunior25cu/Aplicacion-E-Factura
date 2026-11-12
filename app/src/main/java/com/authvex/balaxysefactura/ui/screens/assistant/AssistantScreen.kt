@@ -432,7 +432,7 @@ fun AssistantScreen(
                 error = viewModel.conversationsError,
                 onRetry = { viewModel.loadConversations() },
                 onSelectConversation = { conv ->
-                    if (conv.conversationId == viewModel.currentConversationId) {
+                    if (sameConversationId(conv.conversationId, viewModel.currentConversationId)) {
                         showConversationsSheet = false
                     } else {
                         viewModel.selectConversation(conv.conversationId)
@@ -517,7 +517,7 @@ private fun ConversationsSheetContent(
                         .heightIn(max = 420.dp)
                 ) {
                     items(conversations, key = { it.conversationId }) { item ->
-                        val isCurrent = item.conversationId == currentConversationId
+                        val isCurrent = sameConversationId(item.conversationId, currentConversationId)
                         val formattedDate = remember(item.lastMessageAt) {
                             formatConversationDate(item.lastMessageAt)
                         }
@@ -586,6 +586,25 @@ fun MessageBubble(
     val context = LocalContext.current
     val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
 
+    val openWebUrl: (String) -> Unit = { url ->
+        try {
+            val customTabsIntent = CustomTabsIntent.Builder().build()
+            customTabsIntent.launchUrl(context, Uri.parse(url))
+        } catch (_: Exception) {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            context.startActivity(intent)
+        }
+    }
+
+    val openErpDestination: (ErpLinkDestination) -> Unit = { dest ->
+        when (dest) {
+            is ErpLinkDestination.NativeCfeDetail -> onNavigateToCfeDetail(dest.id)
+            is ErpLinkDestination.NativeCollectionDetail -> onNavigateToCollectionDetail(dest.id)
+            is ErpLinkDestination.ExternalWeb -> openWebUrl(dest.url)
+            is ErpLinkDestination.Ignored -> {}
+        }
+    }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
@@ -611,7 +630,15 @@ fun MessageBubble(
                     } else {
                         SimpleMarkdown(
                             content = message.text,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            onOpenUrl = { url ->
+                                when (val dest = ErpLinkResolver.resolve(url, BuildConfig.WEB_BASE_URL)) {
+                                    is ErpLinkDestination.NativeCfeDetail,
+                                    is ErpLinkDestination.NativeCollectionDetail,
+                                    is ErpLinkDestination.ExternalWeb -> openErpDestination(dest)
+                                    is ErpLinkDestination.Ignored -> openWebUrl(url)
+                                }
+                            }
                         )
                     }
                 }
@@ -635,22 +662,7 @@ fun MessageBubble(
                                 onCancel = {
                                     viewModel.cancelCardAction(actionKey)
                                 },
-                                onOpenLink = { dest ->
-                                    when (dest) {
-                                        is ErpLinkDestination.NativeCfeDetail -> onNavigateToCfeDetail(dest.id)
-                                        is ErpLinkDestination.NativeCollectionDetail -> onNavigateToCollectionDetail(dest.id)
-                                        is ErpLinkDestination.ExternalWeb -> {
-                                            try {
-                                                val customTabsIntent = CustomTabsIntent.Builder().build()
-                                                customTabsIntent.launchUrl(context, Uri.parse(dest.url))
-                                            } catch (_: Exception) {
-                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(dest.url))
-                                                context.startActivity(intent)
-                                            }
-                                        }
-                                        is ErpLinkDestination.Ignored -> {}
-                                    }
-                                },
+                                onOpenLink = openErpDestination,
                                 webBaseUrl = BuildConfig.WEB_BASE_URL
                             )
                         }

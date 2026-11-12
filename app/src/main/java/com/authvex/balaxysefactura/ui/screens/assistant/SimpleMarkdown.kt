@@ -17,22 +17,28 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.LinkInteractionListener
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import java.net.URI
 
 sealed class MdBlock {
     data class Header(val level: Int, val text: String) : MdBlock()
     data class Paragraph(val text: String) : MdBlock()
     data class BulletItem(val text: String) : MdBlock()
     data class OrderedItem(val number: String, val text: String) : MdBlock()
+    data class Quote(val text: String) : MdBlock()
     data class CodeBlock(val text: String) : MdBlock()
     data class Table(val headers: List<String>, val rows: List<List<String>>) : MdBlock()
     object Divider : MdBlock()
@@ -42,9 +48,12 @@ sealed class MdBlock {
 fun SimpleMarkdown(
     content: String,
     modifier: Modifier = Modifier,
-    color: Color = MaterialTheme.colorScheme.onSurface
+    color: Color = MaterialTheme.colorScheme.onSurface,
+    onOpenUrl: ((String) -> Unit)? = null
 ) {
     val blocks = parseMarkdownBlocks(content)
+    val linkColor = MaterialTheme.colorScheme.primary
+    val quoteColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         blocks.forEach { block ->
@@ -56,7 +65,7 @@ fun SimpleMarkdown(
                         else -> MaterialTheme.typography.titleSmall
                     }
                     Text(
-                        text = parseInlineMarkdown(block.text),
+                        text = parseInlineMarkdown(block.text, linkColor, onOpenUrl),
                         style = style,
                         fontWeight = FontWeight.Bold,
                         color = color
@@ -64,7 +73,7 @@ fun SimpleMarkdown(
                 }
                 is MdBlock.Paragraph -> {
                     Text(
-                        text = parseInlineMarkdown(block.text),
+                        text = parseInlineMarkdown(block.text, linkColor, onOpenUrl),
                         style = MaterialTheme.typography.bodyMedium,
                         color = color
                     )
@@ -72,13 +81,44 @@ fun SimpleMarkdown(
                 is MdBlock.BulletItem -> {
                     Row(modifier = Modifier.padding(start = 8.dp)) {
                         Text("• ", fontWeight = FontWeight.Bold, color = color)
-                        Text(text = parseInlineMarkdown(block.text), style = MaterialTheme.typography.bodyMedium, color = color)
+                        Text(
+                            text = parseInlineMarkdown(block.text, linkColor, onOpenUrl),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = color
+                        )
                     }
                 }
                 is MdBlock.OrderedItem -> {
                     Row(modifier = Modifier.padding(start = 8.dp)) {
                         Text("${block.number}. ", fontWeight = FontWeight.Bold, color = color)
-                        Text(text = parseInlineMarkdown(block.text), style = MaterialTheme.typography.bodyMedium, color = color)
+                        Text(
+                            text = parseInlineMarkdown(block.text, linkColor, onOpenUrl),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = color
+                        )
+                    }
+                }
+                is MdBlock.Quote -> {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Min)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(3.dp)
+                                .fillMaxHeight()
+                                .background(
+                                    color = quoteColor.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(1.5.dp)
+                                )
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = parseInlineMarkdown(block.text, linkColor, onOpenUrl),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = quoteColor
+                        )
                     }
                 }
                 is MdBlock.CodeBlock -> {
@@ -96,7 +136,7 @@ fun SimpleMarkdown(
                     }
                 }
                 is MdBlock.Table -> {
-                    TableBlock(headers = block.headers, rows = block.rows, textColor = color)
+                    TableBlock(headers = block.headers, rows = block.rows, textColor = color, linkColor = linkColor, onOpenUrl = onOpenUrl)
                 }
                 is MdBlock.Divider -> {
                     HorizontalDivider(
@@ -246,9 +286,15 @@ fun calculateTableColumnWidths(
 }
 
 @Composable
-private fun TableBlock(headers: List<String>, rows: List<List<String>>, textColor: Color) {
-    val parsedHeaders = remember(headers) { headers.map { parseInlineMarkdown(it) } }
-    val parsedRows = remember(rows) { rows.map { row -> row.map { parseInlineMarkdown(it) } } }
+private fun TableBlock(
+    headers: List<String>,
+    rows: List<List<String>>,
+    textColor: Color,
+    linkColor: Color = MaterialTheme.colorScheme.primary,
+    onOpenUrl: ((String) -> Unit)? = null
+) {
+    val parsedHeaders = remember(headers, linkColor, onOpenUrl) { headers.map { parseInlineMarkdown(it, linkColor, onOpenUrl) } }
+    val parsedRows = remember(rows, linkColor, onOpenUrl) { rows.map { row -> row.map { parseInlineMarkdown(it, linkColor, onOpenUrl) } } }
 
     SharedTableView(
         headers = parsedHeaders,
@@ -435,6 +481,7 @@ fun parseMarkdownBlocks(text: String): List<MdBlock> {
     val codeLines = mutableListOf<String>()
 
     val tableLines = mutableListOf<String>()
+    val quoteLines = mutableListOf<String>()
 
     fun flushTable() {
         if (tableLines.isEmpty()) return
@@ -461,6 +508,13 @@ fun parseMarkdownBlocks(text: String): List<MdBlock> {
         tableLines.clear()
     }
 
+    fun flushQuote() {
+        if (quoteLines.isNotEmpty()) {
+            blocks.add(MdBlock.Quote(quoteLines.joinToString("\n")))
+            quoteLines.clear()
+        }
+    }
+
     fun flushCodeBlock() {
         if (codeLines.isNotEmpty()) {
             blocks.add(MdBlock.CodeBlock(codeLines.joinToString("\n")))
@@ -473,6 +527,7 @@ fun parseMarkdownBlocks(text: String): List<MdBlock> {
 
         if (trimmed.startsWith("```")) {
             flushTable()
+            flushQuote()
             if (inCodeBlock) {
                 flushCodeBlock()
                 inCodeBlock = false
@@ -487,17 +542,24 @@ fun parseMarkdownBlocks(text: String): List<MdBlock> {
             continue
         }
 
-        if (trimmed.matches(Regex("^(-{3,}|\\*{3,}|_{3,})$"))) {
-            flushTable()
-            blocks.add(MdBlock.Divider)
-            continue
-        }
-
         if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+            flushQuote()
             tableLines.add(trimmed)
             continue
         } else if (tableLines.isNotEmpty()) {
             flushTable()
+        }
+
+        if (line.trimStart().startsWith("> ")) {
+            quoteLines.add(line.trimStart().removePrefix("> ").trimEnd())
+            continue
+        } else if (quoteLines.isNotEmpty()) {
+            flushQuote()
+        }
+
+        if (trimmed.matches(Regex("^(-{3,}|\\*{3,}|_{3,})$"))) {
+            blocks.add(MdBlock.Divider)
+            continue
         }
 
         if (trimmed.startsWith("# ")) {
@@ -518,41 +580,100 @@ fun parseMarkdownBlocks(text: String): List<MdBlock> {
     }
 
     flushTable()
+    flushQuote()
     flushCodeBlock()
 
     return blocks
 }
 
-fun parseInlineMarkdown(text: String): AnnotatedString {
+private fun isAllowedMarkdownUrl(rawUrl: String): Boolean {
+    val trimmed = rawUrl.trim()
+    if (trimmed.isEmpty()) return false
+    return try {
+        val uri = URI(trimmed)
+        val scheme = uri.scheme?.lowercase()
+        (scheme == "http" || scheme == "https") && !uri.host.isNullOrBlank()
+    } catch (_: Exception) {
+        false
+    }
+}
+
+private val inlineMarkdownRegex = Regex(
+    "`([^`]+)`|(\\*\\*|__)(.+?)\\2|\\[([^\\]]+)]\\(([^()\\s]*(?:\\([^()\\s]*\\)[^()\\s]*)*)\\)"
+)
+
+fun parseInlineMarkdown(
+    text: String,
+    linkColor: Color = Color(0xFF1976D2),
+    onOpenUrl: ((String) -> Unit)? = null
+): AnnotatedString {
     return buildAnnotatedString {
-        var cursor = 0
-        val regex = Regex("(\\*\\*|__)(.*?)\\1|`([^`]+)`")
-        val matches = regex.findAll(text)
+        appendInlineMarkdown(text, linkColor, onOpenUrl)
+    }
+}
 
-        for (match in matches) {
-            val start = match.range.first
-            if (start > cursor) {
-                append(text.substring(cursor, start))
-            }
+private fun AnnotatedString.Builder.appendInlineMarkdown(
+    text: String,
+    linkColor: Color,
+    onOpenUrl: ((String) -> Unit)?
+) {
+    var cursor = 0
+    val matches = inlineMarkdownRegex.findAll(text)
 
-            val boldContent = match.groupValues[2]
-            val codeContent = match.groupValues[3]
+    for (match in matches) {
+        val start = match.range.first
+        if (start > cursor) {
+            append(text.substring(cursor, start))
+        }
 
-            if (boldContent.isNotEmpty()) {
-                pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
-                append(boldContent)
-                pop()
-            } else if (codeContent.isNotEmpty()) {
+        val codeContent = match.groupValues[1]
+        val boldDelimiter = match.groupValues[2]
+        val boldContent = match.groupValues[3]
+        val linkLabel = match.groupValues[4]
+        val linkUrl = match.groupValues[5]
+
+        when {
+            codeContent.isNotEmpty() -> {
                 pushStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = Color(0x22000000)))
                 append(codeContent)
                 pop()
             }
-
-            cursor = match.range.last + 1
+            boldDelimiter.isNotEmpty() -> {
+                pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
+                appendInlineMarkdown(boldContent, linkColor, onOpenUrl)
+                pop()
+            }
+            linkLabel.isNotEmpty() -> {
+                val trimmedUrl = linkUrl.trim()
+                if (isAllowedMarkdownUrl(trimmedUrl)) {
+                    val linkStyle = SpanStyle(
+                        color = linkColor,
+                        textDecoration = TextDecoration.Underline
+                    )
+                    val linkAnnotation = LinkAnnotation.Url(
+                        url = trimmedUrl,
+                        styles = TextLinkStyles(style = linkStyle),
+                        linkInteractionListener = if (onOpenUrl != null) {
+                            LinkInteractionListener { onOpenUrl(trimmedUrl) }
+                        } else {
+                            null
+                        }
+                    )
+                    pushLink(linkAnnotation)
+                    pushStyle(linkStyle)
+                    appendInlineMarkdown(linkLabel, linkColor, onOpenUrl)
+                    pop()
+                    pop()
+                } else {
+                    appendInlineMarkdown(linkLabel, linkColor, onOpenUrl)
+                }
+            }
         }
 
-        if (cursor < text.length) {
-            append(text.substring(cursor))
-        }
+        cursor = match.range.last + 1
+    }
+
+    if (cursor < text.length) {
+        append(text.substring(cursor))
     }
 }
