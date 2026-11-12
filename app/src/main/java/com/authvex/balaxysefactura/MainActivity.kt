@@ -127,6 +127,7 @@ class MainActivity : ComponentActivity() {
 
                 LaunchedEffect(Unit) {
                     SessionManager.sessionExpiredEvent.collectLatest {
+                        aiAssistantRepository.invalidateAccess()
                         navController.navigate(Screen.Login.route) {
                             popUpTo(0) { inclusive = true }
                         }
@@ -146,6 +147,7 @@ class MainActivity : ComponentActivity() {
                         LoginScreen(
                             viewModel = loginViewModel,
                             onLoginSuccess = {
+                                aiAssistantRepository.invalidateAccess()
                                 navController.navigate(Screen.Home.route) {
                                     popUpTo(Screen.Login.route) { inclusive = true }
                                 }

@@ -16,7 +16,9 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 
 class FakeAiAssistantRepository(
     enabled: Boolean = true,
@@ -24,6 +26,9 @@ class FakeAiAssistantRepository(
 ) : AiAssistantRepository(mock(), mock(), enabled) {
 
     var nextResponse: Result<AiChatResponse>? = null
+    var historyResult: Result<List<AiConversationMessage>>? = null
+    var suggestionsResult: Result<List<String>>? = null
+    var suggestionsCallCount = 0
     var lastMessageSent: String? = null
     var lastConversationIdSent: String? = null
     var sendCount = 0
@@ -46,7 +51,12 @@ class FakeAiAssistantRepository(
     }
 
     override suspend fun getSuggestions(): Result<List<String>> {
-        return Result.success(listOf("Sugerencia 1", "Sugerencia 2"))
+        suggestionsCallCount++
+        return suggestionsResult ?: Result.success(listOf("Sugerencia 1", "Sugerencia 2"))
+    }
+
+    override suspend fun getMessages(conversationId: String): Result<List<AiConversationMessage>> {
+        return historyResult ?: Result.success(emptyList())
     }
 
     override suspend fun canUseAssistant(): Boolean = true
@@ -103,6 +113,57 @@ class AssistantViewModelTest {
     }
 
     @Test
+    fun `saved conversationId loads and maps history messages`() = runTest(testScheduler) {
+        whenever(authPreferences.getAiConversationIdSync()).thenReturn("c-history")
+        fakeRepository.historyResult = Result.success(
+            listOf(
+                AiConversationMessage("user", "Pregunta previa"),
+                AiConversationMessage("assistant", "Respuesta previa")
+            )
+        )
+
+        val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
+
+        assertEquals(2, viewModel.messages.size)
+        assertTrue(viewModel.messages[0].isFromHistory)
+        assertEquals(ChatRole.USER, viewModel.messages[0].role)
+        assertEquals("Pregunta previa", viewModel.messages[0].text)
+
+        assertTrue(viewModel.messages[1].isFromHistory)
+        assertEquals(ChatRole.ASSISTANT, viewModel.messages[1].role)
+        assertEquals("Respuesta previa", viewModel.messages[1].text)
+        assertFalse(viewModel.isLoadingHistory)
+        assertNull(viewModel.historyError)
+    }
+
+    @Test
+    fun `empty history list clears saved conversationId`() = runTest(testScheduler) {
+        whenever(authPreferences.getAiConversationIdSync()).thenReturn("c-deleted")
+        fakeRepository.historyResult = Result.success(emptyList())
+
+        val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
+
+        assertEquals(0, viewModel.messages.size)
+        verify(authPreferences).clearAiConversationId()
+        assertFalse(viewModel.isLoadingHistory)
+        assertNull(viewModel.historyError)
+    }
+
+    @Test
+    fun `history loading error keeps conversationId and sets non-blocking historyError`() = runTest(testScheduler) {
+        whenever(authPreferences.getAiConversationIdSync()).thenReturn("c-error")
+        fakeRepository.historyResult = Result.failure(AppError.ServerError(503, "No disponible"))
+
+        val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
+
+        assertEquals(0, viewModel.messages.size)
+        verify(authPreferences, never()).clearAiConversationId()
+        assertFalse(viewModel.isLoadingHistory)
+        assertNotNull(viewModel.historyError)
+        assertTrue(viewModel.historyError!!.contains("No se pudo cargar la conversación anterior"))
+    }
+
+    @Test
     fun `cannot send message while isWaiting`() = runTest(testScheduler) {
         fakeRepository.delayMs = 5000L
 
@@ -110,7 +171,6 @@ class AssistantViewModelTest {
 
         viewModel.send("Primer mensaje")
 
-        // While first send is processing (isWaiting is true), second send is ignored
         assertTrue(viewModel.isWaiting)
         val initialSize = viewModel.messages.size
 
@@ -146,7 +206,7 @@ class AssistantViewModelTest {
     }
 
     @Test
-    fun `initialMessage is sent only once`() = runTest(testScheduler) {
+    fun `initialMessage is sent without calling getSuggestions`() = runTest(testScheduler) {
         fakeRepository.nextResponse = Result.success(AiChatResponse("Hola desde initial", "c-init", "r-init"))
 
         val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = "Pregunta inicial")
@@ -155,6 +215,7 @@ class AssistantViewModelTest {
         assertEquals("Pregunta inicial", viewModel.messages[0].text)
         assertEquals("Hola desde initial", viewModel.messages[1].text)
         assertEquals(1, fakeRepository.sendCount)
+        assertEquals(0, fakeRepository.suggestionsCallCount)
     }
 
     @Test
@@ -170,6 +231,24 @@ class AssistantViewModelTest {
 
         assertEquals(0, viewModel.messages.size)
         verify(authPreferences).clearAiConversationId()
+    }
+
+    @Test
+    fun `response from generation prior to newConversation is discarded`() = runTest(testScheduler) {
+        fakeRepository.delayMs = 5000L
+
+        val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
+
+        viewModel.send("Mensaje que tardará")
+
+        // User triggers newConversation while send is in progress
+        viewModel.newConversation()
+
+        // Advance time to let the delayed response complete
+        advanceTimeBy(5000L)
+
+        // The old response must be discarded and messages must remain empty
+        assertEquals(0, viewModel.messages.size)
     }
 
     @Test

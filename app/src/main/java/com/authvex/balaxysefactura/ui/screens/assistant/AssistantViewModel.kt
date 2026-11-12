@@ -22,7 +22,8 @@ data class ChatMessageUi(
     val text: String,
     val status: MessageStatus = MessageStatus.SENT,
     val errorText: String? = null,
-    val requestId: String? = null
+    val requestId: String? = null,
+    val isFromHistory: Boolean = false
 )
 
 class AssistantViewModel(
@@ -40,6 +41,12 @@ class AssistantViewModel(
     var isSlow by mutableStateOf(false)
         private set
 
+    var isLoadingHistory by mutableStateOf(false)
+        private set
+
+    var historyError by mutableStateOf<String?>(null)
+        private set
+
     var suggestions by mutableStateOf<List<String>>(emptyList())
         private set
 
@@ -47,19 +54,56 @@ class AssistantViewModel(
 
     private var initialMessageSent = false
     private var slowTimerJob: Job? = null
+    private var currentGen = 0
 
     init {
         loadInitialData()
     }
 
     private fun loadInitialData() {
-        viewModelScope.launch {
-            val suggestionsRes = repository.getSuggestions()
-            suggestions = suggestionsRes.getOrNull() ?: listOf("¿Cómo viene el mes?", "¿Quién me debe más?")
-
-            if (!initialMessageSent && !initialMessage.isNullOrBlank()) {
+        if (!initialMessage.isNullOrBlank()) {
+            if (!initialMessageSent) {
                 initialMessageSent = true
                 send(initialMessage)
+            }
+            loadHistoryIfAvailable()
+        } else {
+            viewModelScope.launch {
+                val suggestionsRes = repository.getSuggestions()
+                suggestions = suggestionsRes.getOrNull() ?: listOf("¿Cómo viene el mes?", "¿Quién me debe más?")
+            }
+            loadHistoryIfAvailable()
+        }
+    }
+
+    private fun loadHistoryIfAvailable() {
+        viewModelScope.launch {
+            val savedConvId = authPreferences.getAiConversationIdSync()
+            if (!savedConvId.isNullOrBlank()) {
+                isLoadingHistory = true
+                historyError = null
+
+                val res = repository.getMessages(savedConvId)
+                res.onSuccess { historyList ->
+                    if (historyList.isEmpty()) {
+                        authPreferences.clearAiConversationId()
+                    } else {
+                        val mappedHistory = historyList.map { msg ->
+                            val isUser = msg.role.equals("user", ignoreCase = true)
+                            ChatMessageUi(
+                                role = if (isUser) ChatRole.USER else ChatRole.ASSISTANT,
+                                text = msg.content,
+                                status = MessageStatus.SENT,
+                                isFromHistory = true
+                            )
+                        }
+                        val currentNonHistory = messages.filter { !it.isFromHistory }
+                        messages = mappedHistory + currentNonHistory
+                    }
+                }.onFailure {
+                    historyError = "No se pudo cargar la conversación anterior. Podés seguir escribiendo o empezar una nueva."
+                }
+                isLoadingHistory = false
             }
         }
     }
@@ -87,8 +131,9 @@ class AssistantViewModel(
 
         startSlowTimer()
 
+        val capturedGen = currentGen
         viewModelScope.launch {
-            executeSendMessage(userMessage)
+            executeSendMessage(userMessage, capturedGen)
         }
     }
 
@@ -98,7 +143,6 @@ class AssistantViewModel(
         if (targetIndex < 0) return
 
         val targetMessage = messages[targetIndex]
-        // Reset status to SENT (remove error)
         val updatedMessage = targetMessage.copy(status = MessageStatus.SENT, errorText = null)
         messages = messages.toMutableList().apply { set(targetIndex, updatedMessage) }
 
@@ -106,8 +150,9 @@ class AssistantViewModel(
         isSlow = false
         startSlowTimer()
 
+        val capturedGen = currentGen
         viewModelScope.launch {
-            executeSendMessage(updatedMessage)
+            executeSendMessage(updatedMessage, capturedGen)
         }
     }
 
@@ -121,10 +166,14 @@ class AssistantViewModel(
         }
     }
 
-    private suspend fun executeSendMessage(userMessage: ChatMessageUi) {
+    private suspend fun executeSendMessage(userMessage: ChatMessageUi, gen: Int) {
         try {
             val conversationId = authPreferences.getAiConversationIdSync()
             val result = repository.sendMessage(userMessage.text, conversationId)
+
+            if (gen != currentGen) {
+                return
+            }
 
             result.onSuccess { response ->
                 authPreferences.saveAiConversationId(response.conversationId)
@@ -160,15 +209,19 @@ class AssistantViewModel(
                 }
             }
         } finally {
-            slowTimerJob?.cancel()
-            isWaiting = false
-            isSlow = false
+            if (gen == currentGen) {
+                slowTimerJob?.cancel()
+                isWaiting = false
+                isSlow = false
+            }
         }
     }
 
     fun newConversation() {
         viewModelScope.launch {
+            currentGen++
             messages = emptyList()
+            historyError = null
             authPreferences.clearAiConversationId()
             input = ""
         }

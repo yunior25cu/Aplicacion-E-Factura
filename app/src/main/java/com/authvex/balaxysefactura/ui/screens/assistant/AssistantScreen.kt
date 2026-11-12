@@ -32,6 +32,8 @@ fun AssistantScreen(
     val messages = viewModel.messages
     val isWaiting = viewModel.isWaiting
     val isSlow = viewModel.isSlow
+    val isLoadingHistory = viewModel.isLoadingHistory
+    val historyError = viewModel.historyError
     val suggestions = viewModel.suggestions
     var showNewDialog by remember { mutableStateOf(false) }
 
@@ -64,14 +66,21 @@ fun AssistantScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        if (messages.isNotEmpty()) {
-                            showNewDialog = true
-                        } else {
-                            viewModel.newConversation()
-                        }
-                    }) {
-                        Icon(Icons.Default.AddComment, contentDescription = "Nueva conversación", tint = MaterialTheme.colorScheme.primary)
+                    IconButton(
+                        onClick = {
+                            if (messages.isNotEmpty()) {
+                                showNewDialog = true
+                            } else {
+                                viewModel.newConversation()
+                            }
+                        },
+                        enabled = !isWaiting && !isLoadingHistory
+                    ) {
+                        Icon(
+                            Icons.Default.AddComment,
+                            contentDescription = "Nueva conversación",
+                            tint = if (!isWaiting && !isLoadingHistory) MaterialTheme.colorScheme.primary else Color.Gray
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -84,13 +93,40 @@ fun AssistantScreen(
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
+            if (isLoadingHistory) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+
+            if (!historyError.isNullOrBlank()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = historyError,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { viewModel.newConversation() }) {
+                            Text("Empezar una nueva", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
+
             // Messages / Empty State Area (Weight 1f)
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-                if (messages.isEmpty() && !isWaiting) {
+                if (messages.isEmpty() && !isWaiting && !isLoadingHistory) {
                     // Empty State
                     Column(
                         modifier = Modifier
@@ -159,10 +195,32 @@ fun AssistantScreen(
                         }
 
                         items(messages.reversed(), key = { it.id }) { msg ->
-                            MessageBubble(
-                                message = msg,
-                                onRetry = { viewModel.retry(msg.id) }
-                            )
+                            val msgIndex = messages.indexOf(msg)
+                            val isLastHistoryMsg = msg.isFromHistory && (msgIndex == messages.size - 1 || !messages[msgIndex + 1].isFromHistory)
+
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                MessageBubble(
+                                    message = msg,
+                                    onRetry = { viewModel.retry(msg.id) }
+                                )
+                                if (isLastHistoryMsg) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        HorizontalDivider(modifier = Modifier.weight(1f))
+                                        Text(
+                                            text = "Conversación anterior",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                            modifier = Modifier.padding(horizontal = 8.dp)
+                                        )
+                                        HorizontalDivider(modifier = Modifier.weight(1f))
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -247,7 +305,7 @@ fun MessageBubble(
                 bottomEnd = if (isUser) 4.dp else 16.dp
             ),
             color = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.widthIn(max = 320.dp)
+            modifier = Modifier.fillMaxWidth(if (isUser) 0.85f else 0.90f)
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 SelectionContainer {
