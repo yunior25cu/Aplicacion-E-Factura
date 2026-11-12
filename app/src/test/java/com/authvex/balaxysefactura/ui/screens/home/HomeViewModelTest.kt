@@ -12,6 +12,8 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -32,29 +34,13 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `shows assistant card with suggestions when canUseAssistant is true`() = runTest {
+    fun `shows assistant card without requesting suggestions when canUseAssistant is true`() = runTest {
         whenever(aiAssistantRepository.canUseAssistant()).thenReturn(true)
-        whenever(aiAssistantRepository.getSuggestions()).thenReturn(Result.success(listOf("¿Sugerencia 1?", "¿Sugerencia 2?", "¿Sugerencia 3?")))
 
         val viewModel = HomeViewModel(aiAssistantRepository)
 
-        assertNotNull(viewModel.assistantCard)
-        assertEquals(2, viewModel.assistantCard?.suggestions?.size)
-        assertEquals("¿Sugerencia 1?", viewModel.assistantCard?.suggestions?.get(0))
-        assertEquals("¿Sugerencia 2?", viewModel.assistantCard?.suggestions?.get(1))
-    }
-
-    @Test
-    fun `shows assistant card with fallback suggestions when suggestions api fails`() = runTest {
-        whenever(aiAssistantRepository.canUseAssistant()).thenReturn(true)
-        whenever(aiAssistantRepository.getSuggestions()).thenReturn(Result.failure(RuntimeException("Error")))
-
-        val viewModel = HomeViewModel(aiAssistantRepository)
-
-        assertNotNull(viewModel.assistantCard)
-        assertEquals(2, viewModel.assistantCard?.suggestions?.size)
-        assertEquals("¿Cómo viene el mes?", viewModel.assistantCard?.suggestions?.get(0))
-        assertEquals("¿Quién me debe más?", viewModel.assistantCard?.suggestions?.get(1))
+        assertEquals(AssistantCardState, viewModel.assistantCard)
+        verify(aiAssistantRepository, never()).getSuggestions()
     }
 
     @Test

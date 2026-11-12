@@ -47,9 +47,6 @@ class AssistantViewModel(
     var historyError by mutableStateOf<String?>(null)
         private set
 
-    var suggestions by mutableStateOf<List<String>>(emptyList())
-        private set
-
     var input by mutableStateOf("")
 
     private var initialMessageSent = false
@@ -60,20 +57,13 @@ class AssistantViewModel(
         loadInitialData()
     }
 
+    // Sin sugerencias del servidor: se generan con IA (tokens y segundos de espera).
     private fun loadInitialData() {
-        if (!initialMessage.isNullOrBlank()) {
-            if (!initialMessageSent) {
-                initialMessageSent = true
-                send(initialMessage)
-            }
-            loadHistoryIfAvailable()
-        } else {
-            viewModelScope.launch {
-                val suggestionsRes = repository.getSuggestions()
-                suggestions = suggestionsRes.getOrNull() ?: listOf("¿Cómo viene el mes?", "¿Quién me debe más?")
-            }
-            loadHistoryIfAvailable()
+        if (!initialMessage.isNullOrBlank() && !initialMessageSent) {
+            initialMessageSent = true
+            send(initialMessage)
         }
+        loadHistoryIfAvailable()
     }
 
     private fun loadHistoryIfAvailable() {

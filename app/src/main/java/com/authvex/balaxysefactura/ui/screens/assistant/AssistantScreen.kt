@@ -34,7 +34,6 @@ fun AssistantScreen(
     val isSlow = viewModel.isSlow
     val isLoadingHistory = viewModel.isLoadingHistory
     val historyError = viewModel.historyError
-    val suggestions = viewModel.suggestions
     var showNewDialog by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
@@ -164,21 +163,6 @@ fun AssistantScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        if (suggestions.isNotEmpty()) {
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                suggestions.forEach { suggestion ->
-                                    SuggestionChip(
-                                        onClick = { viewModel.send(suggestion) },
-                                        label = { Text(suggestion) }
-                                    )
-                                }
-                            }
-                        }
                     }
                 } else {
                     // Messages List

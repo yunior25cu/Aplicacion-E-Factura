@@ -219,6 +219,15 @@ class AssistantViewModelTest {
     }
 
     @Test
+    fun `opening the chat without a message does not request suggestions`() = runTest(testScheduler) {
+        val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
+
+        assertTrue(viewModel.messages.isEmpty())
+        assertEquals(0, fakeRepository.sendCount)
+        assertEquals(0, fakeRepository.suggestionsCallCount)
+    }
+
+    @Test
     fun `newConversation clears messages and conversationId`() = runTest(testScheduler) {
         fakeRepository.nextResponse = Result.success(AiChatResponse("Respuesta", "c-999", "r-999"))
 

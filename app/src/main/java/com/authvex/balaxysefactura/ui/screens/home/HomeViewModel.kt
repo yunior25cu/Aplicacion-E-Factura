@@ -8,9 +8,11 @@ import androidx.lifecycle.viewModelScope
 import com.authvex.balaxysefactura.core.repository.AiAssistantRepository
 import kotlinx.coroutines.launch
 
-data class AssistantCardState(
-    val suggestions: List<String>
-)
+/**
+ * Tarjeta del Asistente en Home. Sin sugerencias: pedirlas al servidor genera
+ * preguntas con IA (tokens y varios segundos de espera) en cada carga de Home.
+ */
+data object AssistantCardState
 
 class HomeViewModel(
     private val aiAssistantRepository: AiAssistantRepository
@@ -25,16 +27,7 @@ class HomeViewModel(
 
     fun checkAssistantAvailability() {
         viewModelScope.launch {
-            if (aiAssistantRepository.canUseAssistant()) {
-                val fallbackSuggestions = listOf("¿Cómo viene el mes?", "¿Quién me debe más?")
-                val suggestionsRes = aiAssistantRepository.getSuggestions()
-                val loadedSuggestions = suggestionsRes.getOrNull()?.take(2)
-                val finalSuggestions = if (!loadedSuggestions.isNullOrEmpty()) loadedSuggestions else fallbackSuggestions
-
-                assistantCard = AssistantCardState(suggestions = finalSuggestions)
-            } else {
-                assistantCard = null
-            }
+            assistantCard = if (aiAssistantRepository.canUseAssistant()) AssistantCardState else null
         }
     }
 }
