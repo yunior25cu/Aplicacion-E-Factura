@@ -13,8 +13,11 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.authvex.balaxysefactura.BuildConfig
 import com.authvex.balaxysefactura.core.auth.AuthPreferences
 import com.authvex.balaxysefactura.core.auth.SessionManager
+import com.authvex.balaxysefactura.core.network.AccessApi
+import com.authvex.balaxysefactura.core.network.AiAssistantApi
 import com.authvex.balaxysefactura.core.network.AuthApi
 import com.authvex.balaxysefactura.core.network.BudgetApi
 import com.authvex.balaxysefactura.core.network.CfeApi
@@ -26,6 +29,7 @@ import com.authvex.balaxysefactura.core.network.ProductoDto
 import com.authvex.balaxysefactura.core.network.ReportsApi
 import com.authvex.balaxysefactura.core.network.RetrofitClient
 import com.authvex.balaxysefactura.core.network.ScanApi
+import com.authvex.balaxysefactura.core.repository.AiAssistantRepository
 import com.authvex.balaxysefactura.core.repository.BudgetRepository
 import com.authvex.balaxysefactura.core.repository.CfeRepository
 import com.authvex.balaxysefactura.core.repository.ClientRepository
@@ -35,8 +39,12 @@ import com.authvex.balaxysefactura.core.repository.ProductRepository
 import com.authvex.balaxysefactura.core.repository.ReportsRepository
 import com.authvex.balaxysefactura.core.repository.ScanRepository
 import com.authvex.balaxysefactura.ui.navigation.Screen
+import com.authvex.balaxysefactura.ui.screens.assistant.AssistantScreen
+import com.authvex.balaxysefactura.ui.screens.assistant.AssistantViewModel
 import com.authvex.balaxysefactura.ui.screens.client.ClientCreateScreen
 import com.authvex.balaxysefactura.ui.screens.client.ClientCreateViewModel
+import com.authvex.balaxysefactura.ui.screens.home.HomeScreen
+import com.authvex.balaxysefactura.ui.screens.home.HomeViewModel
 import com.authvex.balaxysefactura.ui.screens.product.ProductCreateScreen
 import com.authvex.balaxysefactura.ui.screens.product.ProductCreateViewModel
 import com.authvex.balaxysefactura.ui.screens.scan.ScanScreen
@@ -95,6 +103,8 @@ class MainActivity : ComponentActivity() {
         val scanApi = retrofitClient.create(ScanApi::class.java)
         val clientApi = retrofitClient.create(ClientApi::class.java)
         val productApi = retrofitClient.create(ProductApi::class.java)
+        val accessApi = retrofitClient.create(AccessApi::class.java)
+        val aiAssistantApi = retrofitClient.createLongRunning(AiAssistantApi::class.java)
 
         val cfeRepository = CfeRepository(cfeApi)
         val reportsRepository = ReportsRepository(reportsApi)
@@ -104,6 +114,7 @@ class MainActivity : ComponentActivity() {
         val scanRepository = ScanRepository(scanApi)
         val clientRepository = ClientRepository(clientApi)
         val productRepository = ProductRepository(productApi)
+        val aiAssistantRepository = AiAssistantRepository(aiAssistantApi, accessApi, BuildConfig.AI_ASSISTANT_ENABLED)
 
         val startDestination = runBlocking {
             if (authPreferences.getAuthTokenSync() != null) Screen.Home.route else Screen.Login.route
@@ -142,8 +153,21 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable(Screen.Home.route) {
+                        val homeFactory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return HomeViewModel(aiAssistantRepository) as T
+                            }
+                        }
+                        val homeViewModel: HomeViewModel = viewModel(factory = homeFactory)
+
                         HomeScreen(
+                            assistantCard = homeViewModel.assistantCard,
+                            onOpenAssistant = { initMsg ->
+                                navController.navigate(Screen.Assistant.createRoute(initMsg))
+                            },
                             onLogout = {
+                                aiAssistantRepository.invalidateAccess()
                                 runBlocking { authPreferences.clearAuthData() }
                                 navController.navigate(Screen.Login.route) {
                                     popUpTo(0) { inclusive = true }
@@ -530,6 +554,30 @@ class MainActivity : ComponentActivity() {
                                     ?.set("created_product_id", createdProduct.id)
                                 navController.popBackStack()
                             }
+                        )
+                    }
+                    composable(
+                        route = Screen.Assistant.route,
+                        arguments = listOf(
+                            navArgument("initialMessage") {
+                                type = NavType.StringType
+                                nullable = true
+                                defaultValue = null
+                            }
+                        )
+                    ) { backStackEntry ->
+                        val initMsg = backStackEntry.arguments?.getString("initialMessage")
+                        val assistantFactory = object : ViewModelProvider.Factory {
+                            @Suppress("UNCHECKED_CAST")
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return AssistantViewModel(aiAssistantRepository, authPreferences, initMsg) as T
+                            }
+                        }
+                        val assistantViewModel: AssistantViewModel = viewModel(factory = assistantFactory)
+
+                        AssistantScreen(
+                            viewModel = assistantViewModel,
+                            onNavigateBack = { navController.popBackStack() }
                         )
                     }
                     if (BuildConfig.DEBUG) {

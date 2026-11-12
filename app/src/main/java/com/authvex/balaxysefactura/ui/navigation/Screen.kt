@@ -1,5 +1,7 @@
 package com.authvex.balaxysefactura.ui.navigation
 
+import android.net.Uri
+
 sealed class Screen(val route: String) {
     object Login : Screen("login")
     object Home : Screen("home")
@@ -35,4 +37,7 @@ sealed class Screen(val route: String) {
     object ScanInbox : Screen("scan_inbox")
     object ClientCreate : Screen("client_create")
     object ProductCreate : Screen("product_create")
+    object Assistant : Screen("assistant?initialMessage={initialMessage}") {
+        fun createRoute(initialMessage: String? = null) = if (initialMessage.isNullOrBlank()) "assistant" else "assistant?initialMessage=${Uri.encode(initialMessage)}"
+    }
 }
