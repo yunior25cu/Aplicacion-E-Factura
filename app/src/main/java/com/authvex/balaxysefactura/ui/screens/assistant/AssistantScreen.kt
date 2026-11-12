@@ -113,7 +113,10 @@ fun AssistantScreen(
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.weight(1f)
                         )
-                        TextButton(onClick = { viewModel.newConversation() }) {
+                        TextButton(
+                            onClick = { viewModel.newConversation() },
+                            enabled = !isWaiting
+                        ) {
                             Text("Empezar una nueva", style = MaterialTheme.typography.labelSmall)
                         }
                     }
@@ -292,6 +295,7 @@ fun MessageBubble(
     onRetry: () -> Unit
 ) {
     val isUser = message.role == ChatRole.USER
+    val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -305,7 +309,7 @@ fun MessageBubble(
                 bottomEnd = if (isUser) 4.dp else 16.dp
             ),
             color = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.fillMaxWidth(if (isUser) 0.85f else 0.90f)
+            modifier = Modifier.widthIn(max = screenWidthDp * if (isUser) 0.85f else 0.90f)
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 SelectionContainer {

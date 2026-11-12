@@ -220,6 +220,9 @@ class AssistantViewModel(
     fun newConversation() {
         viewModelScope.launch {
             currentGen++
+            slowTimerJob?.cancel()
+            isWaiting = false
+            isSlow = false
             messages = emptyList()
             historyError = null
             authPreferences.clearAiConversationId()

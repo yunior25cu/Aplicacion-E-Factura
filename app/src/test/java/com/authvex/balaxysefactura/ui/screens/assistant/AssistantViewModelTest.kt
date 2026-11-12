@@ -234,6 +234,41 @@ class AssistantViewModelTest {
     }
 
     @Test
+    fun `newConversation resets isWaiting and isSlow when a send is pending and discards old response`() = runTest(testScheduler) {
+        fakeRepository.delayMs = 10000L
+        fakeRepository.nextResponse = Result.success(AiChatResponse("Respuesta vieja", "c-old", "r-old"))
+
+        val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
+
+        viewModel.send("Mensaje pendiente")
+        assertTrue(viewModel.isWaiting)
+
+        // User triggers newConversation while waiting for response
+        viewModel.newConversation()
+
+        // isWaiting and isSlow are reset immediately
+        assertFalse(viewModel.isWaiting)
+        assertFalse(viewModel.isSlow)
+        assertEquals(0, viewModel.messages.size)
+
+        // Subsequent send works immediately
+        fakeRepository.delayMs = 0L
+        fakeRepository.nextResponse = Result.success(AiChatResponse("Respuesta nueva", "c-new", "r-new"))
+
+        viewModel.send("Nuevo mensaje")
+
+        // Advance time to complete old pending response and new send
+        advanceTimeBy(10000L)
+
+        // Only the new message and its response exist (2 messages, not 3 or old response)
+        assertEquals(2, viewModel.messages.size)
+        assertEquals("Nuevo mensaje", viewModel.messages[0].text)
+        assertEquals("Respuesta nueva", viewModel.messages[1].text)
+        verify(authPreferences, never()).saveAiConversationId("c-old")
+        verify(authPreferences).saveAiConversationId("c-new")
+    }
+
+    @Test
     fun `response from generation prior to newConversation is discarded`() = runTest(testScheduler) {
         fakeRepository.delayMs = 5000L
 
