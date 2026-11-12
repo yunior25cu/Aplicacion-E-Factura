@@ -14,6 +14,8 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -567,5 +569,74 @@ class AssistantViewModelTest {
         assertNull(fakeRepository.lastConversationIdSent)
         assertEquals("c-nueva", viewModel.currentConversationId)
         assertEquals(2, viewModel.messages.size)
+    }
+
+    @Test
+    fun `initial load and selectConversation map history tarjetas and requestId and allow sending feedback`() = runTest(testScheduler) {
+        val initialCard = AiTarjeta(
+            tool = "cuentas_por_cobrar",
+            titulo = "Cuentas por cobrar",
+            datos = buildJsonObject { put("total", 1525048.2) }
+        )
+        val secondConvCard = AiTarjeta(
+            tool = "preparar_emision_cfe",
+            titulo = "Emitir CFE",
+            datos = buildJsonObject {
+                put("id_factura", 10)
+                put("total", 122)
+                put("confirmacion_vencida", true)
+            }
+        )
+
+        whenever(authPreferences.getAiConversationIdSync()).thenReturn("c-hist-1")
+        fakeRepository.historyResult = Result.success(
+            listOf(
+                AiConversationMessage("user", "cuanto me deben los clientes"),
+                AiConversationMessage(
+                    role = "assistant",
+                    content = "El total que te deben ...",
+                    tarjetas = listOf(initialCard),
+                    requestId = "req-hist-1"
+                )
+            )
+        )
+
+        val viewModel = AssistantViewModel(fakeRepository, authPreferences, initialMessage = null)
+
+        assertEquals(2, viewModel.messages.size)
+        val loadedAssistant = viewModel.messages[1]
+        assertTrue(loadedAssistant.isFromHistory)
+        assertEquals("req-hist-1", loadedAssistant.requestId)
+        assertEquals(1, loadedAssistant.tarjetas.size)
+        assertEquals("cuentas_por_cobrar", loadedAssistant.tarjetas[0].tool)
+
+        // Feedback on a history message with requestId calls sendFeedback
+        viewModel.submitFeedback(requestId = loadedAssistant.requestId!!, positive = true, comment = null)
+        assertEquals(1, fakeRepository.feedbackCallCount)
+        assertEquals("req-hist-1", fakeRepository.lastFeedbackRequestId)
+        assertEquals(true, fakeRepository.lastFeedbackPositive)
+        assertEquals(FeedbackRating.POSITIVE, viewModel.getFeedbackRating("req-hist-1"))
+
+        // Switching conversation via selectConversation also preserves tarjetas and requestId
+        fakeRepository.historyResult = Result.success(
+            listOf(
+                AiConversationMessage("user", "emití el CFE 10"),
+                AiConversationMessage(
+                    role = "assistant",
+                    content = "Preparé la emisión del CFE",
+                    tarjetas = listOf(secondConvCard),
+                    requestId = "req-hist-2"
+                )
+            )
+        )
+
+        viewModel.selectConversation("c-hist-2")
+
+        assertEquals(2, viewModel.messages.size)
+        val selectedAssistant = viewModel.messages[1]
+        assertTrue(selectedAssistant.isFromHistory)
+        assertEquals("req-hist-2", selectedAssistant.requestId)
+        assertEquals(1, selectedAssistant.tarjetas.size)
+        assertEquals("preparar_emision_cfe", selectedAssistant.tarjetas[0].tool)
     }
 }

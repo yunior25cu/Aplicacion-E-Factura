@@ -123,15 +123,7 @@ class AssistantViewModel(
                         conversationCleared = true
                         authPreferences.clearAiConversationId()
                     } else {
-                        val mappedHistory = historyList.map { msg ->
-                            val isUser = msg.role.equals("user", ignoreCase = true)
-                            ChatMessageUi(
-                                role = if (isUser) ChatRole.USER else ChatRole.ASSISTANT,
-                                text = msg.content,
-                                status = MessageStatus.SENT,
-                                isFromHistory = true
-                            )
-                        }
+                        val mappedHistory = historyToUiMessages(historyList)
                         val currentNonHistory = messages.filter { !it.isFromHistory }
                         messages = mappedHistory + currentNonHistory
                     }
@@ -193,15 +185,7 @@ class AssistantViewModel(
                 return@launch
             }
             res.onSuccess { historyList ->
-                messages = historyList.map { msg ->
-                    val isUser = msg.role.equals("user", ignoreCase = true)
-                    ChatMessageUi(
-                        role = if (isUser) ChatRole.USER else ChatRole.ASSISTANT,
-                        text = msg.content,
-                        status = MessageStatus.SENT,
-                        isFromHistory = true
-                    )
-                }
+                messages = historyToUiMessages(historyList)
             }.onFailure {
                 historyError = "No se pudo cargar la conversación anterior. Podés seguir escribiendo o empezar una nueva."
             }

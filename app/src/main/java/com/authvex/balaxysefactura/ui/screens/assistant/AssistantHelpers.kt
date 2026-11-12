@@ -1,11 +1,30 @@
 package com.authvex.balaxysefactura.ui.screens.assistant
 
+import com.authvex.balaxysefactura.core.network.AiConversationMessage
 import com.authvex.balaxysefactura.core.network.CfeDetailDto
 import com.authvex.balaxysefactura.core.network.CobroDetailDto
+import kotlinx.serialization.json.JsonObject
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
+
+fun historyToUiMessages(list: List<AiConversationMessage>): List<ChatMessageUi> {
+    return list.map { msg ->
+        val isUser = msg.role.equals("user", ignoreCase = true)
+        val validTarjetas = msg.tarjetas.orEmpty().filter { tarjeta ->
+            tarjeta.tool.isNotBlank() && tarjeta.datos is JsonObject
+        }
+        ChatMessageUi(
+            role = if (isUser) ChatRole.USER else ChatRole.ASSISTANT,
+            text = msg.content,
+            status = MessageStatus.SENT,
+            requestId = msg.requestId?.trim()?.takeIf { it.isNotEmpty() },
+            isFromHistory = true,
+            tarjetas = validTarjetas
+        )
+    }
+}
 
 fun sameConversationId(a: String?, b: String?): Boolean {
     val cleanA = a?.trim().orEmpty()

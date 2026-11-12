@@ -1,10 +1,18 @@
 package com.authvex.balaxysefactura.ui.screens.assistant
 
+import com.authvex.balaxysefactura.core.network.AiConversationMessage
+import com.authvex.balaxysefactura.core.network.AiTarjeta
 import com.authvex.balaxysefactura.core.network.CfeDetailDto
 import com.authvex.balaxysefactura.core.network.ClienteDto
 import com.authvex.balaxysefactura.core.network.CobroDetailDto
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.TimeZone
@@ -179,5 +187,67 @@ class AssistantHelpersTest {
             "Resumime el cobro: qué facturas cancela y cómo se pagó.",
             buildCollectionAssistantPrompt(emptyCobroZeroId)
         )
+    }
+
+    @Test
+    fun `historyToUiMessages preserves valid tarjetas and requestId, discards invalid tarjetas, and handles legacy messages`() {
+        val validCard = AiTarjeta(
+            tool = "cuentas_por_cobrar",
+            titulo = "Cuentas por cobrar",
+            datos = buildJsonObject { put("total", 1525048.2) }
+        )
+        val blankToolCard = AiTarjeta(
+            tool = "   ",
+            titulo = "Sin tool",
+            datos = buildJsonObject { put("total", 10) }
+        )
+        val nullDatosCard = AiTarjeta(
+            tool = "deuda_vencida",
+            titulo = "Sin objeto JSON",
+            datos = JsonNull
+        )
+        val arrayDatosCard = AiTarjeta(
+            tool = "deuda_vencida",
+            titulo = "Array JSON",
+            datos = JsonArray(listOf(JsonPrimitive("item")))
+        )
+
+        val history = listOf(
+            AiConversationMessage(
+                role = "user",
+                content = "cuanto me deben los clientes",
+                tarjetas = emptyList(),
+                requestId = null
+            ),
+            AiConversationMessage(
+                role = "assistant",
+                content = "El total que te deben ...",
+                tarjetas = listOf(validCard, blankToolCard, nullDatosCard, arrayDatosCard),
+                requestId = "8f1c-req"
+            ),
+            AiConversationMessage(
+                role = "assistant",
+                content = "Mensaje viejo sin campos nuevos"
+            )
+        )
+
+        val uiMessages = historyToUiMessages(history)
+        assertEquals(3, uiMessages.size)
+
+        assertEquals(ChatRole.USER, uiMessages[0].role)
+        assertTrue(uiMessages[0].isFromHistory)
+        assertTrue(uiMessages[0].tarjetas.isEmpty())
+        assertNull(uiMessages[0].requestId)
+
+        assertEquals(ChatRole.ASSISTANT, uiMessages[1].role)
+        assertTrue(uiMessages[1].isFromHistory)
+        assertEquals("8f1c-req", uiMessages[1].requestId)
+        assertEquals(1, uiMessages[1].tarjetas.size)
+        assertEquals("cuentas_por_cobrar", uiMessages[1].tarjetas[0].tool)
+
+        assertEquals(ChatRole.ASSISTANT, uiMessages[2].role)
+        assertTrue(uiMessages[2].isFromHistory)
+        assertTrue(uiMessages[2].tarjetas.isEmpty())
+        assertNull(uiMessages[2].requestId)
     }
 }

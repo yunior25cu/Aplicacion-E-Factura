@@ -649,7 +649,11 @@ fun MessageBubble(
                         message.tarjetas.forEachIndexed { cardIdx, tarjeta ->
                             val cardModel = remember(tarjeta) { buildCard(tarjeta) }
                             val actionKey = "${message.id}_${cardIdx}"
-                            val executionState = viewModel.getActionExecutionState(actionKey)
+                            val executionState = if (cardModel.isExpiredAction) {
+                                ActionExecutionState.Pending()
+                            } else {
+                                viewModel.getActionExecutionState(actionKey)
+                            }
 
                             AiCardView(
                                 model = cardModel,
