@@ -15,11 +15,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 sealed class MdBlock {
@@ -103,87 +109,312 @@ fun SimpleMarkdown(
     }
 }
 
+data class TableLayoutResult(
+    val columnWidths: List<Dp>,
+    val needsHorizontalScroll: Boolean
+)
+
+fun isNumericColumn(
+    colIndex: Int,
+    rows: List<List<String>>,
+    header: String = ""
+): Boolean {
+    val nonBlankDataCells = rows.mapNotNull { row ->
+        row.getOrNull(colIndex)?.trim()?.takeIf { it.isNotEmpty() }
+    }
+    if (nonBlankDataCells.isEmpty()) {
+        return isNumericCell(header)
+    }
+    val numericCount = nonBlankDataCells.count { isNumericCell(it) }
+    return numericCount * 2 > nonBlankDataCells.size
+}
+
+fun calculateTableColumnWidths(
+    headerWidths: List<Dp>,
+    rowWidths: List<List<Dp>>,
+    isNumericColumns: List<Boolean>,
+    availableWidth: Dp,
+    minTextColumnWidth: Dp = 96.dp
+): TableLayoutResult {
+    return calculateTableColumnWidths(
+        cellWidths = listOf(headerWidths) + rowWidths,
+        isNumericColumns = isNumericColumns,
+        availableWidth = availableWidth,
+        minTextColumnWidth = minTextColumnWidth
+    )
+}
+
+fun calculateTableColumnWidths(
+    cellWidths: List<List<Dp>>,
+    isNumericColumns: List<Boolean>,
+    availableWidth: Dp,
+    minTextColumnWidth: Dp = 96.dp
+): TableLayoutResult {
+    val colCount = maxOf(
+        isNumericColumns.size,
+        cellWidths.maxOfOrNull { it.size } ?: 0
+    )
+    if (colCount == 0 || cellWidths.isEmpty()) {
+        return TableLayoutResult(emptyList(), false)
+    }
+
+    val maxMeasured = List(colCount) { col ->
+        cellWidths.maxOfOrNull { row -> row.getOrElse(col) { 0.dp } } ?: 0.dp
+    }
+
+    val numericCols = (0 until colCount).filter { isNumericColumns.getOrElse(it) { false } }
+    val textCols = (0 until colCount).filter { !isNumericColumns.getOrElse(it) { false } }
+
+    val numericTotal = numericCols.fold(0.dp) { acc, col -> acc + maxMeasured[col] }
+
+    if (textCols.isEmpty()) {
+        return TableLayoutResult(
+            columnWidths = maxMeasured,
+            needsHorizontalScroll = numericTotal > availableWidth
+        )
+    }
+
+    val textMinWidths = textCols.associateWith { col ->
+        minOf(maxMeasured[col], minTextColumnWidth)
+    }
+    val textMinTotal = textCols.fold(0.dp) { acc, col -> acc + textMinWidths.getValue(col) }
+
+    val resultWidths = MutableList(colCount) { col -> maxMeasured[col] }
+
+    if (numericTotal + textMinTotal > availableWidth) {
+        for (col in textCols) {
+            resultWidths[col] = textMinWidths.getValue(col)
+        }
+        return TableLayoutResult(
+            columnWidths = resultWidths,
+            needsHorizontalScroll = true
+        )
+    }
+
+    val remainingForText = availableWidth - numericTotal
+    val totalNaturalText = textCols.fold(0.dp) { acc, col -> acc + maxMeasured[col] }
+
+    if (totalNaturalText <= remainingForText) {
+        for (col in textCols) {
+            resultWidths[col] = maxMeasured[col]
+        }
+        return TableLayoutResult(
+            columnWidths = resultWidths,
+            needsHorizontalScroll = false
+        )
+    }
+
+    val allocated = mutableMapOf<Int, Dp>()
+    val unsettled = textCols.toMutableSet()
+    var budget = remainingForText
+
+    while (unsettled.isNotEmpty()) {
+        val equalShare = budget / unsettled.size
+        val satisfied = unsettled.filter { col -> maxMeasured[col] <= equalShare }
+        if (satisfied.isNotEmpty()) {
+            for (col in satisfied) {
+                allocated[col] = maxMeasured[col]
+                budget -= maxMeasured[col]
+                unsettled.remove(col)
+            }
+            continue
+        }
+        val belowMin = unsettled.filter { col -> equalShare < textMinWidths.getValue(col) }
+        if (belowMin.isNotEmpty()) {
+            for (col in belowMin) {
+                val minW = textMinWidths.getValue(col)
+                allocated[col] = minW
+                budget -= minW
+                unsettled.remove(col)
+            }
+            continue
+        }
+        for (col in unsettled) {
+            allocated[col] = equalShare
+        }
+        unsettled.clear()
+    }
+
+    for (col in textCols) {
+        resultWidths[col] = allocated.getValue(col)
+    }
+
+    return TableLayoutResult(
+        columnWidths = resultWidths,
+        needsHorizontalScroll = false
+    )
+}
+
 @Composable
 private fun TableBlock(headers: List<String>, rows: List<List<String>>, textColor: Color) {
+    val parsedHeaders = remember(headers) { headers.map { parseInlineMarkdown(it) } }
+    val parsedRows = remember(rows) { rows.map { row -> row.map { parseInlineMarkdown(it) } } }
+
+    SharedTableView(
+        headers = parsedHeaders,
+        rows = parsedRows,
+        headerStyle = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+        cellStyle = MaterialTheme.typography.bodySmall,
+        textColor = textColor
+    )
+}
+
+@Composable
+fun SharedTableView(
+    headers: List<AnnotatedString>,
+    rows: List<List<AnnotatedString>>,
+    headerStyle: TextStyle,
+    cellStyle: TextStyle,
+    textColor: Color = MaterialTheme.colorScheme.onSurface,
+    modifier: Modifier = Modifier
+) {
     val scrollState = rememberScrollState()
     val borderColor = MaterialTheme.colorScheme.outlineVariant
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
 
-    val colWidths = remember(headers, rows) {
-        headers.mapIndexed { colIdx, header ->
-            var maxChars = header.length
-            rows.forEach { row ->
-                val cell = row.getOrNull(colIdx) ?: ""
-                if (cell.length > maxChars) {
-                    maxChars = cell.length
-                }
-            }
-            val estimatedDp = (maxChars * 8 + 24).dp
-            estimatedDp.coerceIn(56.dp, 220.dp)
+    val cellHorizontalPadding = 6.dp
+    val tablePadding = 6.dp
+    val borderWidth = 1.dp
+
+    val isNumericColumns = remember(headers, rows) {
+        val plainRows = rows.map { row -> row.map { it.text } }
+        headers.indices.map { colIdx ->
+            isNumericColumn(
+                colIndex = colIdx,
+                rows = plainRows,
+                header = headers[colIdx].text
+            )
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(scrollState)
-            .border(1.dp, borderColor, RoundedCornerShape(8.dp))
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.White)
-            .padding(8.dp)
-    ) {
-        Column {
-            // Header Row
-            Row(
-                modifier = Modifier
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                    .padding(vertical = 6.dp)
-            ) {
-                headers.forEachIndexed { colIdx, header ->
-                    val widthDp = colWidths.getOrElse(colIdx) { 90.dp }
-                    Box(
-                        modifier = Modifier
-                            .width(widthDp)
-                            .padding(horizontal = 6.dp),
-                        contentAlignment = if (isNumericCell(header)) Alignment.CenterEnd else Alignment.CenterStart
-                    ) {
-                        Text(
-                            text = parseInlineMarkdown(header),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = textColor
-                        )
-                    }
+    val headerWidths = remember(headers, headerStyle, density, textMeasurer) {
+        headers.map { headerText ->
+            val measured = textMeasurer.measure(
+                text = headerText,
+                style = headerStyle,
+                softWrap = false,
+                maxLines = 1
+            )
+            with(density) {
+                measured.size.width.toDp() + (cellHorizontalPadding * 2) + 2.dp
+            }
+        }
+    }
+
+    val rowWidths = remember(headers.size, rows, cellStyle, density, textMeasurer) {
+        rows.map { row ->
+            headers.indices.map { colIdx ->
+                val cellText = row.getOrNull(colIdx) ?: AnnotatedString("")
+                val measured = textMeasurer.measure(
+                    text = cellText,
+                    style = cellStyle,
+                    softWrap = false,
+                    maxLines = 1
+                )
+                with(density) {
+                    measured.size.width.toDp() + (cellHorizontalPadding * 2) + 2.dp
                 }
             }
+        }
+    }
 
-            HorizontalDivider(color = borderColor, thickness = 1.dp)
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val availableWidth = (maxWidth - (tablePadding * 2) - (borderWidth * 2)).coerceAtLeast(0.dp)
+        val layout = remember(headerWidths, rowWidths, isNumericColumns, availableWidth) {
+            calculateTableColumnWidths(
+                headerWidths = headerWidths,
+                rowWidths = rowWidths,
+                isNumericColumns = isNumericColumns,
+                availableWidth = availableWidth
+            )
+        }
+        val totalTableWidth = layout.columnWidths.fold(0.dp) { acc, w -> acc + w }
 
-            // Body Rows
-            rows.forEachIndexed { rowIndex, row ->
+        val scrollModifier = if (layout.needsHorizontalScroll) {
+            Modifier.horizontalScroll(scrollState)
+        } else {
+            Modifier
+        }
+
+        Box(
+            modifier = Modifier
+                .widthIn(max = maxWidth)
+                .border(borderWidth, borderColor, RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.White)
+                .padding(tablePadding)
+        ) {
+            Column(
+                modifier = scrollModifier.width(totalTableWidth)
+            ) {
+                // Header Row
                 Row(
-                    modifier = Modifier.padding(vertical = 6.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    headers.indices.forEach { colIndex ->
-                        val cellText = row.getOrNull(colIndex) ?: ""
-                        val isNum = isNumericCell(cellText)
-                        val widthDp = colWidths.getOrElse(colIndex) { 90.dp }
+                    headers.forEachIndexed { colIdx, header ->
+                        val isNum = isNumericColumns.getOrElse(colIdx) { false }
+                        val widthDp = layout.columnWidths.getOrElse(colIdx) { 96.dp }
 
                         Box(
                             modifier = Modifier
                                 .width(widthDp)
-                                .padding(horizontal = 6.dp),
+                                .padding(horizontal = cellHorizontalPadding),
                             contentAlignment = if (isNum) Alignment.CenterEnd else Alignment.CenterStart
                         ) {
                             Text(
-                                text = parseInlineMarkdown(cellText),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = textColor
+                                text = header,
+                                style = headerStyle,
+                                color = textColor,
+                                softWrap = !isNum,
+                                maxLines = if (isNum) 1 else 3,
+                                overflow = if (isNum) TextOverflow.Clip else TextOverflow.Ellipsis,
+                                textAlign = if (isNum) TextAlign.End else TextAlign.Start
                             )
                         }
                     }
                 }
-                if (rowIndex < rows.size - 1) {
-                    HorizontalDivider(color = borderColor.copy(alpha = 0.5f), thickness = 0.5.dp)
+
+                HorizontalDivider(color = borderColor, thickness = 1.dp)
+
+                // Body Rows
+                rows.forEachIndexed { rowIndex, row ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        headers.indices.forEach { colIdx ->
+                            val cellText = row.getOrNull(colIdx) ?: AnnotatedString("")
+                            val isNum = isNumericColumns.getOrElse(colIdx) { false }
+                            val widthDp = layout.columnWidths.getOrElse(colIdx) { 96.dp }
+
+                            Box(
+                                modifier = Modifier
+                                    .width(widthDp)
+                                    .padding(horizontal = cellHorizontalPadding),
+                                contentAlignment = if (isNum) Alignment.CenterEnd else Alignment.CenterStart
+                            ) {
+                                Text(
+                                    text = cellText,
+                                    style = cellStyle,
+                                    color = textColor,
+                                    softWrap = !isNum,
+                                    maxLines = if (isNum) 1 else 3,
+                                    overflow = if (isNum) TextOverflow.Clip else TextOverflow.Ellipsis,
+                                    textAlign = if (isNum) TextAlign.End else TextAlign.Start
+                                )
+                            }
+                        }
+                    }
+                    if (rowIndex < rows.size - 1) {
+                        HorizontalDivider(color = borderColor.copy(alpha = 0.5f), thickness = 0.5.dp)
+                    }
                 }
             }
         }
